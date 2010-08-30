@@ -11,7 +11,8 @@
 extern "C"{
 #include "rootdir.h"
 #include "sd_raw.h"
-#include "LPC214x.h"
+//#include "LPC214x.h"
+#include "LPC21xx_SFE.h"
 #include "serial.h"
 #include "rprintf.h"
 #include "spi0.h"
@@ -24,8 +25,28 @@ extern "C"{
 //					External Component Libs
 //*******************************************************
 #include "ADXL345.h"
+#include "I2C.h"
 //#include "gps.h"
 
+
+/* ************************ Register map for the HMC5843 ****************************/
+//I2C Address for the HMC5843
+#define HMC_ADDR	0x3C
+
+//HMC5843 Register Addresses
+#define	CONFIG_REGA	0
+#define	CONFIG_REGB	1
+#define	MODE_REG	2
+#define	DATA_OUT_X_H	3
+#define DATA_OUT_X_L	4
+#define DATA_OUT_Y_H	5
+#define	DATA_OUT_Y_L	6
+#define	DATA_OUT_Z_H	7
+#define	DATA_OUT_Z_L	8
+#define	STATUS_REG		9
+#define ID_REGA		10
+#define	ID_REGB		11
+#define	ID_REGC		12
 
 //*******************************************************
 //					Core Functions
@@ -94,7 +115,8 @@ unsigned int power_register_values;			//Holds the value to load to the power reg
 char read_sensors, new_sensor_data;			//Global flag indicating an accelerometer reading has been completed
 char wake_event=0;
 
-ADXL345 accelerometer(0, 17);
+ADXL345 accelerometer(0, 0xA6);	//ADXL345 is on I2C Port 0. I2C address is 0xA6.
+//I2C i2c;
 
 int main (void)
 {
@@ -106,7 +128,45 @@ int main (void)
 	createLogFile();	//Create a new log file in the root of the SD card
 	
 	rprintf("File created and written to\n\r");
-	while(1);
+	
+	char values[7];
+	char status=0;
+	/*
+	i2c.configure();
+	values[0]=CONFIG_REGA;	//Set the HMC module to communicate with Configuration Reg. A	
+	values[1]=0x14;			//Set the update rate to 50 Hz.
+	status=i2c.send(HMC_ADDR, values, WRITE, 2);	//Write to the HMC to set the register to be read.
+	
+	values[0]=MODE_REG;	//Set the HMC module to read the Configuration Reg. A	
+	values[1]=0x00;			//Set the HMC to continuous conversion mode
+	i2c.send(HMC_ADDR, values, WRITE, 2);	//Write the new data to the HMC register.
+	i2c.send(HMC_ADDR, values, WRITE, 1);	//Set up the address on the I2C module for a read.
+	i2c.send(HMC_ADDR, values, READ, 1);	//Read the contents of the register		
+	rprintf("Mode New Contents: %02x\n\r", values[0]);
+*/
+	accelerometer.begin();
+	values[0]=POWER_CTL;
+	status=accelerometer.read(values, 1);
+	
+	status=0;
+	while(!status){
+		values[0]=POWER_CTL;
+		values[1] = MEASURE;
+		status=accelerometer.write(values, 2);
+		if(status)
+			status=accelerometer.read(values, 1);
+	}
+	rprintf("New Power 2: %02x\t%d\n\r", values[0], status);
+	
+	
+	while(1){
+		values[0]=DATAX0;
+		status=accelerometer.read(values, 6);
+		if(status)
+			for(int i=0; i<3; i++)
+				rprintf("%02x%02x\t", values[i*2], values[i*2+1]);
+		rprintf("\n\r");
+	}
 	/*
 	//Initialize the GPS
 	initializeGps();		//Send the initialization strings
@@ -864,14 +924,14 @@ int get_adc_1(char channel)
 {
     int val;
     AD1CR = 0;
-    AD1GDR = 0;
+    //AD1GDR = 0;
 
     //AD1CR = 0x00200600 | channel;
 	AD1CR = 0x00200E00 | channel;
     AD1CR |= 0x01000000;
     do
     {
-        val = AD1GDR;                   // Read A/D Data Register
+        //val = AD1GDR;                   // Read A/D Data Register
     }
     while ((val & 0x80000000) == 0);  //Wait for the conversion to complete
     val = ((val >> 6) & 0x03FF);  //Extract the A/D result

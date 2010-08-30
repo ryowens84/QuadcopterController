@@ -10,20 +10,27 @@
 #include "I2C.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "LPC214x.h"
+//#include "LPC214x.h"
+#include "LPC21xx_SFE.h"
 #include "main.h"
 #define GLOBALOBJECT
-
-#define READ	1
-#define WRITE	0
 
 I2C::I2C(int i2c_port)
 {
 	_i2c_port = i2c_port;
 }
 
-void I2C::begin(void)
+I2C::I2C(void)
 {
+	//do nothing
+}
+
+void I2C::configure(void)
+{
+	//Enable the Port 0 I2C pins
+	//NOTE: This should be modified to take the _i2c_port as an argument
+	PINSEL0 |= 0x00000050;
+	
 	//Configure the I2C Clock for 100 kHz rate and 50% duty cycle
 	I2SCLH = 295;
 	I2SCLL = 295;
@@ -142,14 +149,3 @@ char I2C::send(char SLA, char * contents, char direction, char length)
 	if(error==1)return 0;
 	else return 1;
 }
-
-char I2C::read(char address, char length, char * contents)
-{
-	return send(address, contents, READ, length);
-}
-
-char I2C::write(char address, char length, char * contents)
-{
-	return send(address, contents, WRITE, length)
-}
-	

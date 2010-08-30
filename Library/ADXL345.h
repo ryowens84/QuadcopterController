@@ -1,37 +1,34 @@
 #ifndef ADXL345_h
 #define ADXL345_h
 
-#include "LPC214x.h"
+//#include "LPC214x.h"
+#include "LPC21xx_SFE.h"
+#include "I2C.h"
 
-class ADXL345
+class ADXL345: public I2C
 {
 	public:
-		ADXL345(int port, int i2c_address);
+		ADXL345(int port, char i2c_address);
 		void begin(void);
-		char read(char address);
-		void write(char address, char value);
+		char read(char * values, char length);
+		char write(char * values, char length);
 		void powerDown(void);
 	private:
-		inline void select(void);	//Activates the chip select pin
-		inline void unselect(void);	//Deactivates the chip select pin
-		int _port;	//Assigned the SPI port the sensor is connected to
-		long int _cs_pin; //Assigned the pin number of the Chip Select pin
+		char _i2c_address;
 };
 //**********************************************************
 //
 //                  	Macros
 //
 //**********************************************************
-#define READ	0x8000
-#define	WRITE	0x0000
+
 
 //**********************************************************
 //
 //                  Pin Definitions
 //
 //**********************************************************
-//Definitions for PackageTracker
-#define CHIP_SELECT	(1<<17)
+
 
 
 //ADXL Register Map

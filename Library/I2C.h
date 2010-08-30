@@ -10,18 +10,22 @@
 #ifndef I2C_h
 #define I2C_h
 
-#include "LPC214x.h"
+//#include "LPC214x.h"
+#include "LPC21xx_SFE.h"
+
+#define READ	1
+#define WRITE	0
 
 class I2C
 {
 	public:
 		I2C(int i2c_port);	//Constructor defines which port on the LPC is used for I2C
-		void begin(void);	
-		char read(char address, char length, char * contents);
-		char write(char address, char length, char * contents);
-	private:
+		I2C(void);			//Overloaded contstructor assumes Port will be defined by inherited class.
+		void configure(void);			
+	protected:
 		char send(char SLA, char * contents, char direction, char length);
 		int _i2c_port;
+		
 };
 
 /*I2C Control Register Bits */
@@ -36,3 +40,5 @@ class I2C
 #define	SIC		3
 #define	STAC	5
 #define	I2ENC	6
+
+#endif
