@@ -1,0 +1,658 @@
+/******************************************************************************/
+/*  IN2 Rowing Electronics                                                    */
+/*  Copyright Spark Fun Electronics                                           */
+/******************************************************************************/
+/*                                                                            */
+/*    system level crap, ISRs included in system.c                            */
+/*                                                                            */
+/*                                                                            */
+/******************************************************************************/
+
+#include "system.h"
+#include <stdio.h>
+#include "LPC214x.h"
+#include "type.h"
+#include "irq.h" //Needed for init_VIC
+
+//UART0 Debugging
+#include "serial.h"
+#include "rprintf.h"
+#include "LCD_rprintf.h"
+
+//USB Debugging
+//#include "main_serial.h" //USB Virtual Com Port
+
+//Test routine menu
+#include "main-testers.h"
+
+//SD Init and basic root file 
+#include "rootdir.h"
+#include "sd_raw.h"
+
+//LCD
+#include "CFAX.h"
+#include "IN2_graphics.h"
+#include "ScreenManage.h"
+#include "Practice.h"
+
+//Splash screens
+#include "egg.h"
+
+//SPI to Lipo module
+#include "spi1.h"
+#include "lipomod.h"
+
+//UART1 GPS
+#include "intcomm1.h"
+#include "circbuf.h"
+#include "gps.h"
+
+//User settings storage
+#include <iap_flash.h>
+
+//Other
+#include "calc_spm.h" //Needed for boot_up stroke_count
+#include "DataLog.h" //Bootup
+#include "filters.h" //Bootup
+#include "accelerometer.h"
+#include "Clock.h"
+#include "audioAmp.h"
+#include "batteries.h"
+#include "VolumeBar.h" //Needed in catch_errors
+
+unsigned char charY = 0;         // these are position of curser on LCD
+unsigned char charX = 0;
+char gpsBuffer[512];             // gps buffer gets filled by UART1 isr
+char printbuf[128];
+int printidx;
+volatile int gpsBufW = 0;        // gps buffer index for writing, used in UART1 isr
+unsigned char temp;
+unsigned int buttons = 0;        // used in timer isr to store states of buttons, 1 bit per button
+
+volatile unsigned int button0 = 0;        // these hold the amount of time a button is held down
+volatile unsigned int button1 = 0;        // they are incremented in timer isr
+volatile unsigned int button2 = 0;
+volatile unsigned int button3 = 0;
+
+volatile unsigned int buttonUp0 = 0;     // when a button is released, these hold how long the button
+volatile unsigned int buttonUp1 = 0;     // was held down, and button0, button1, ect are reset to 0
+volatile unsigned int buttonUp2 = 0;
+volatile unsigned int buttonUp3 = 0;
+
+volatile unsigned int bE_heldlast = 0;
+volatile unsigned int bU_heldlast = 0;
+volatile unsigned int bM_heldlast = 0;
+volatile unsigned int bD_heldlast = 0;
+
+volatile unsigned int freefall = 0; /* Detection flag for freefall condition */
+volatile int warntime = 0;
+volatile int holyshit = 0;
+
+buf_type xbuf;
+buf_type ybuf;
+buf_type zbuf;
+
+iir1_type xfilt;
+iir1_type yfilt;
+iir1_type zfilt;
+
+int release = 0;           // this indicates a button was released
+
+int accelX[32];             // buffer holds averaged acceleration values
+int accelXImd;
+int accelXSUM = 0;
+
+int accelY[32];
+int accelYImd;
+int accelYSUM = 0;
+
+int accelZ[32];
+int accelZImd;
+int accelZSUM = 0;
+
+int accelBufIndex = 0;     // index for writing accelerations to accel buffers
+
+int accelAvgCount = 0;      // for averaging
+
+volatile unsigned int timer0int_count = 0;
+
+int outpaths = NO_OUTPUT;
+
+/* Routine Block for startup code */
+/* Define catchall routines for vector table */
+void IRQ_Routine (void);//   __attribute__ ((interrupt("IRQ")));
+void IRQ_Routine (void)
+{
+}
+
+void FIQ_Routine (void)   __attribute__ ((interrupt("FIQ")));
+void FIQ_Routine (void)
+{
+}
+
+void SWI_Routine (void)   __attribute__ ((interrupt("SWI")));
+void SWI_Routine (void)
+{
+}
+
+void UNDEF_Routine (void) __attribute__ ((interrupt("UNDEF")));
+void UNDEF_Routine (void)
+{
+};
+
+// this isr fires 100 times / second for the purpose of checking buttons and measuring acceleration
+// is there too much shit in here?  probably, but seems to work....
+static void timer0ISR(void); // __attribute__ ((interrupt("IRQ"))); //No __att with asm IRQ handler in Startup.S
+static void timer0ISR(void)
+{
+    // do acceleration stuff
+    accelAvgCount++;
+    accelAvgCount %= 10;     // average and record every 10 readings
+
+    /* Fetch new accelerometer samples and apply the filter */
+    int fx=0,fy=0,fz=0;
+    fx=iir1(&xfilt,(int)MMA_get_x());
+    fy=iir1(&yfilt,(int)MMA_get_y());
+    fz=iir1(&zfilt,(int)MMA_get_z());
+
+    if(FREE_ERR(fx,fy,fz))
+    {
+        freefall=1;
+    }
+
+    if(warntime)
+    {
+        warntime++;
+    }
+
+    if(!accelAvgCount)
+    {
+        accelBufIndex++;
+        accelBufIndex %= 32;
+        accelX[accelBufIndex] = fx;
+        accelXImd=accelX[accelBufIndex];
+        bufinsert(&xbuf,fx);
+        accelY[accelBufIndex] = fy;
+        accelYImd=accelY[accelBufIndex];
+        bufinsert(&ybuf,fy);
+        accelZ[accelBufIndex] = fz;
+        accelZImd=accelZ[accelBufIndex];
+        bufinsert(&zbuf,fz);
+    }
+
+    maintain_icons(); //Turn icons on/off or blink them
+    
+    timer0int_count++; //timer0 count increment
+    
+    T0IR = 0xFF; //Clear the timer 0 interrupt
+    VICVectAddr = 0; //Update VIC priorities
+}
+
+// read if a button was pressed, reset to zero, and return how long button was held for
+unsigned int bD(void)
+{
+    unsigned int tmp;
+    tmp = buttonUp3;
+    buttonUp3 = 0;
+    if(bU_heldlast && (tmp > 0))
+    {
+        bU_heldlast = 0;
+        return 0;
+    }
+    return tmp;
+}
+unsigned int bM(void)
+{
+    unsigned int tmp;
+    tmp = buttonUp1;
+    buttonUp1 = 0;
+    if(bM_heldlast && (tmp > 0))
+    {
+        bM_heldlast = 0;
+        return 0;
+    }
+    return tmp;
+}
+unsigned int bE(void)
+{
+    unsigned int tmp;
+    tmp = buttonUp2;
+    buttonUp2 = 0;
+    if(bE_heldlast && (tmp > 0))
+    {
+        bE_heldlast = 0;
+        return 0;
+    }
+    return tmp;
+}
+
+unsigned int bU(void)
+{
+    unsigned int tmp;
+    tmp = buttonUp0;
+    buttonUp0 = 0;
+    if(bD_heldlast && (tmp > 0))
+    {
+        bD_heldlast = 0;
+        return 0;
+    }
+    return tmp;
+}
+unsigned int bD_hold(void)
+{
+    return button3;
+}
+void bD_hold_reset(void)
+{
+    buttonUp3 = 0;
+    button3 = 0;
+    bU_heldlast = 1;
+}
+
+unsigned int bU_hold(void)
+{
+    return button0;
+}
+void bU_hold_reset(void)
+{
+    buttonUp0 = 0;
+    button0 = 0;
+    bD_heldlast = 1;
+}
+
+unsigned int bE_hold(void)
+{
+    return button2;
+}
+void bE_hold_reset(void)
+{
+    buttonUp2 = 0;
+    button2 = 0;
+    bE_heldlast = 1;
+}
+
+
+//Called from Power.c menu
+//Clear screen, close out logs, and go into reset mode
+void power_down(void)
+{
+    LCD_clear_area(0, 0, 64, 128);
+    LCD_paint_screen();
+
+    charX = 24; charY = 13; LCD_font(ARIAL16);
+    LCD_rprintf("Shutting Off");
+    LCD_paint_screen();
+
+    AUDIO_off(); //Power down audio
+
+    LOG_string("T, Shutting Off...\n");
+    LOG_main_close();
+    LOG_coach_close();
+
+    set_power(2, 0); //Power down GPS
+
+    delay_ms(1500); //Hold screen for a bit
+
+    LCD_bl_en(0); //Turn off backlight
+    LCD_off(); 
+    set_power(1, 0); //Power down SD/LCD
+
+    set_power(0, 0); //Ask MSP to turn off LPC
+}
+
+void catch_errors(void)
+{
+    /* Put whatever error conditions here */
+
+    if((freefall == 1) && (warntime==0))
+    {
+        rprintf("Free fall!\n");
+        // SHIT! We've detected freefall. Brace for impact!
+        LOG_force_sync();
+        seticon(WARN);
+        setblink(WARN);
+        freefall=0;
+        warntime++;
+        if(holyshit++>10)
+        {
+            //Display non-warranty screen
+            FREEFALL();
+            delay_ms(3000);
+            holyshit=0;
+        }
+    }
+    if(warntime>0)
+    {
+        LOG_force_sync();
+    }
+    if(warntime > 300)
+    {
+        warntime=0;
+        clearblink(WARN);
+        clearicon(WARN);
+    }
+
+    /* IF the charger is on, and the volume is non-zero
+       * We could be f*cked. Make SURE that volume == 0
+       * whenever charger is connected */
+    if( (get_charge_status()) && (get_current_volume()) )
+    {
+        while(get_current_volume())
+        {
+            decrease_volume();
+        }
+    }
+
+    /* If we seem to have timed out, turn off
+       * "timed out" means 30 minutes (18000) seconds
+       * has elapsed without a button press */
+    //if( timer0int_count >= 180000 )
+    //{
+    //  if(!practicerunning())
+    //  {
+    //    LOG_string("Timout Powerdown.\n");
+    //    power_down();
+    //  }
+    //}
+
+    // Check for low battery and power down if we see it
+    if( (get_battery_level() == 0) && (timer0int_count > 120000))
+    {
+        rprintf("Battery low!\n");
+        power_down();
+    }
+}
+
+void update_icons()
+{
+    int tmp = get_battery_level();
+
+    if(tmp >= 1)
+    {
+        seticon(BAT_LO);
+    }
+    else
+    {
+        clearicon(BAT_LO);
+    }
+
+    if(tmp >= 2)
+    {
+        seticon(BAT_MID);
+    }
+    else
+    {
+        clearicon(BAT_MID);
+    }
+
+    if(tmp == 3)
+    {
+        seticon(BAT_HI);
+    }
+    else
+    {
+        clearicon(BAT_HI);
+    }
+
+    if(get_charge_status())
+    {
+        setblink(BAT);
+        setblink(BAT_MID);
+        setblink(BAT_LO);
+        setblink(BAT_HI);
+    }
+    else
+    {
+        clearblink(BAT);
+        clearblink(BAT_MID);
+        clearblink(BAT_LO);
+        clearblink(BAT_HI);
+    }
+
+	if(read_option(GPS_PWR_EN)) //GPS is enabled
+	{
+		tmp = GPS_get_quality();
+		if(tmp == 0)
+		{
+			setblink(ANTENNA);
+		}
+		else if(tmp > 0)
+		{
+			clearblink(ANTENNA);
+			seticon(ANTENNA);
+		}
+	}
+	else
+	{
+		clearblink(ANTENNA);
+		clearicon(ANTENNA);
+	}
+
+}
+
+void boot_up(void)
+{
+    //Init SPI and notify MSP monitor that we are alive and well
+    SPI1_Init();
+    SPI1_send('#');
+    SPI1_recv();
+
+    //UARTInit(115200); //Init UART0 for debug - Taken care of in bootloader
+    rprintf_devopen(putc_serial0); //Init rprintf
+    rprintf("\nIn2Rowing Firmware 12-26-07\n");
+    rprintf("UART0 Initialized\n");
+
+	//in2_test_routines(); //Used for quick testing of various routines
+
+    //Load user settings - Screen type
+	screen_type = read_option(SCREEN_FONT_TYPE);
+	if (screen_type == 0) 
+		screen_type = 1;
+	else
+		screen_type = 0;
+	toggle_screen(); //Preload screen settings - will flip screen_type back to original
+
+	//Load serial number
+	serial_number = (char*)SERIALNUMBER_START;
+
+	//Check to see if we need to go into test routines - Debug over VCOM USB
+	//Hold buttons 2 and 4 (count from left 1234) to enter test routines
+    int i;
+    for(i = 0 ; i < 6 ; i++)
+    {
+        //rprintf("Buttons=%x\n", get_geninfo());
+
+        if( (get_geninfo()|0xF0) == 0xF3) 
+		{
+			/* Do not use VCOM
+			//Wait for USB to be connected
+			while( (IOPIN0 & (1<<23)) == 0)
+			{
+				rprintf("Waiting for USB\n");
+				delay_ms(1000);
+			}
+			
+			rprintf("Connecting...\n");
+			main_serial();
+			rprintf_devopen(VCOM_putchar);
+			rprintf("VCOM Open\n");
+			usb_active = 1; //We can't MSC bootload when the VCOM is active
+			*/
+
+			in2_test_routines();
+
+			break;
+		}
+
+        delay_ms(10);
+    }
+
+    //Bring up peripheral power
+    set_power(1, 1); //Turn on SD/LCD
+
+    char gps_enable = read_option(GPS_PWR_EN);
+	if (gps_enable > 1)
+	{
+		gps_enable = 1; //Enable GPS by default
+		write_option(GPS_PWR_EN, 1);
+	}
+	set_power(2, gps_enable); //Turn on/off GPS
+
+    rprintf("Peripheral power up\n");
+    delay_ms(10); //Delay for power to stablize
+    get_geninfo_block();
+    rprintf("Power at %d\n", get_battery_level());
+
+    //Init LCD and Display In2Logo
+    LCD_rprintf_devopen(LCD_put_char); //Point LCD_rprintf to LCD routines
+    PINSEL2 &= ~(3 << 2); // Enable GPIO that we need
+    LCD_init();
+    LCD_bl_en(1);
+    LOGO(); 
+    rprintf("LCD Init\n");
+    LCD_paint_screen();
+
+    //Audio default state is turned off
+    AUDIO_off();
+
+    // Initialize accel buffers
+    init_buffer(&xbuf);
+    init_buffer(&ybuf);
+    init_buffer(&zbuf);
+    init_iir1(&xfilt,100.0,25.0);
+    init_iir1(&yfilt,100.0,25.0);
+    init_iir1(&zfilt,100.0,25.0);
+
+    //Setup SPM calculations
+    spm_init();
+
+    //Make sure the spm routines are initialized to zero
+    stroke_count(1);
+
+    //Bring up SD and FAT
+    if(!sd_raw_init())
+    {
+        rprintf("SD Init Error\n");
+        //Looks like something is wrong. Let's try resetting
+        err(0);
+        reset();
+    }
+    if(openroot())
+    {
+        rprintf("SD OpenRoot Error\n");
+        err(1);
+    }
+    rprintf("SD Init\n");
+    
+    //Create Log
+    int y = LOG_main_create();
+    LOG_string("T, LOG BEGUN\n");
+    rprintf("Log started: %d\n", y);
+
+    //Init UART1 for GPS RX at 4800bps
+    uart1ISR_init();
+    GPS_init_strings();
+
+    //Setup Timer0 for RTC
+    VICIntSelect &= ~0x10; // Timer 0 interrupt is an IRQ interrupt
+    VICIntEnable = 0x10; // Enable timer 0 interrupt
+    VICVectCntl1 = 0x24; // Use slot 0 for timer 0 interrupt
+    VICVectAddr1 = (unsigned int)timer0ISR; // Set the address of ISR for slot 0
+    T0TCR = 0; // Reset timer 0
+    T0PR = 0; // Set the timer 0 prescale counter
+    T0MR0 = 600000; // Set timer 0 match register
+    T0MCR = 3; // Generate interrupt and reset counter on match
+    T0TCR = 1; // Start timer 0
+
+    //Initialize subs
+    RTC_init();
+    RTC_stop();
+    MMA_init();
+    rprintf("RTC and MMA Init\n");
+
+    rprintf("Boot up complete\n");
+}
+
+//Short delay
+void delay_ms(int count)
+{
+    int i;
+    count *= 10000;
+    for (i = 0; i < count; i++)
+        asm volatile ("nop");
+}
+
+//Intentionally fault Watchdog to trigger a reset condition
+void reset(void)
+{
+    rprintf("\nThrowing reset!\n");
+
+    WDMOD |= 3;
+    WDFEED = 0xAA;
+    WDFEED = 0x55;
+    WDFEED = 0xAA;
+    WDFEED = 0x00;
+}
+
+//Some sort of button scanning and timing routine
+void update_buttons(void)
+{
+    //Check button status
+    buttons = (~(get_geninfo_block()&0x0f))&0x0f;
+
+    //rprintf("Buttons:0x%x\n",buttons);
+
+    if(buttons != 0x0f)
+    {
+        timer0int_count = 0;
+    }
+    if (buttons == 0xf)
+    {  // if no button is held down
+        if (release)
+        {       // update button down times when released, but only do once per release
+            buttonUp0 = button0;
+            buttonUp1 = button1;
+            buttonUp2 = button2;
+            buttonUp3 = button3;
+            release = 0;
+        }
+        button0 = 0;
+        button1 = 0;
+        button2 = 0;
+        button3 = 0;
+    }
+    else if (!(buttons & 0x1))
+    {
+        release = 1;
+        button0++;
+    }
+    else if (!(buttons & 0x2))
+    {
+        release = 1;
+        button1++;
+    }
+    else if (!(buttons & 0x4))
+    {
+        release = 1;
+        button2++;
+    }
+    else if (!(buttons & 0x8))
+    {
+        release = 1;
+        button3++;
+    }
+
+
+}
+
+//Display error on LCD for 5 seconds
+void err(int d)
+{
+    LCD_clear_area(0,0,64,128);
+
+    charX = 2; charY = 0; LCD_font(ARIAL16);
+    LCD_rprintf("Error #%d",d);
+
+    LCD_paint_screen();
+    delay_ms(5000);
+}

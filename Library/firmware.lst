@@ -1,0 +1,398 @@
+   1              		.file	"firmware.c"
+   9              	.Ltext0:
+  10              		.align	2
+  11              		.global	call_firmware
+  13              	call_firmware:
+  14              	.LFB3:
+  15              		.file 1 "../Library/firmware.c"
+   1:../Library/firmware.c **** /*
+   2:../Library/firmware.c **** 	NES 11-6-07
+   3:../Library/firmware.c **** 	These are inherited functions
+   4:../Library/firmware.c **** 	
+   5:../Library/firmware.c **** 	Used only by bootloader.
+   6:../Library/firmware.c **** 	
+   7:../Library/firmware.c **** 	Pull 512 byte chunks from SD card and record them into LPC flash memory using IAP
+   8:../Library/firmware.c **** 	
+   9:../Library/firmware.c **** 	Current bootloader ends at sector 7
+  10:../Library/firmware.c **** 	User settings are contained in sector 8
+  11:../Library/firmware.c **** 	Start erasing for main code in sector 9
+  12:../Library/firmware.c **** */
+  13:../Library/firmware.c **** 
+  14:../Library/firmware.c **** #include "firmware.h"
+  15:../Library/firmware.c **** #include <stdio.h>
+  16:../Library/firmware.c **** #include "LPC214x.h"
+  17:../Library/firmware.c **** 
+  18:../Library/firmware.c **** #include "fat16.h"
+  19:../Library/firmware.c **** #include "rootdir.h"
+  20:../Library/firmware.c **** #include "system.h"
+  21:../Library/firmware.c **** #include "sd_raw.h"
+  22:../Library/firmware.c **** #include "rprintf.h"
+  23:../Library/firmware.c **** 
+  24:../Library/firmware.c **** #ifndef ERRORCODE
+  25:../Library/firmware.c ****     #define ERRORCODE(x)
+  26:../Library/firmware.c **** #endif
+  27:../Library/firmware.c **** 
+  28:../Library/firmware.c **** /* READBUFSIZE must be a size allowed
+  29:../Library/firmware.c ****  * by the LPC2148 IAP copy ram to flash command
+  30:../Library/firmware.c ****  */
+  31:../Library/firmware.c **** #define READBUFSIZE 512
+  32:../Library/firmware.c **** 
+  33:../Library/firmware.c **** #define STARTSECTOR 0x00008000
+  34:../Library/firmware.c **** #define STARTLSB    15
+  35:../Library/firmware.c **** #define STARTNUM    8
+  36:../Library/firmware.c **** #define TRICKYSECT  0x00079000
+  37:../Library/firmware.c **** #define TRICKYNUM   23
+  38:../Library/firmware.c **** #define TRICKYLSB   12
+  39:../Library/firmware.c **** #define SECTOR_NUMBER(x) ( (x>=TRICKYSECT) ? \
+  40:../Library/firmware.c ****                            ( ((x-TRICKYSECT ) >> TRICKYLSB) +TRICKYNUM) : \
+  41:../Library/firmware.c ****                            ( ((x-STARTSECTOR) >> STARTLSB ) +STARTNUM ) )
+  42:../Library/firmware.c **** 
+  43:../Library/firmware.c **** #define STARTADDR  0x00010000
+  44:../Library/firmware.c **** #define ERASE_SECT_START 9
+  45:../Library/firmware.c **** #define ERASE_SECT_STOP  26
+  46:../Library/firmware.c **** 
+  47:../Library/firmware.c **** /* Sector Lookup */
+  48:../Library/firmware.c **** 
+  49:../Library/firmware.c **** /* Flash Programming Crapola */
+  50:../Library/firmware.c **** 
+  51:../Library/firmware.c **** void (*iap_fn)(unsigned int[],unsigned int[])=(void*)0x7ffffff1;
+  52:../Library/firmware.c **** 
+  53:../Library/firmware.c **** unsigned int prep_command[5]={50,11,11,0,0};
+  54:../Library/firmware.c **** /* write command[4] assumes that the clock rate is 60MHz */
+  55:../Library/firmware.c **** unsigned int write_command[5]={51,0,0,0,60000};
+  56:../Library/firmware.c **** unsigned int erase_command[5]={52,ERASE_SECT_START,ERASE_SECT_STOP,60000};
+  57:../Library/firmware.c **** unsigned int result[2];
+  58:../Library/firmware.c **** 
+  59:../Library/firmware.c **** /* readbuf MUST be on a word boundary */
+  60:../Library/firmware.c **** char readbuf[READBUFSIZE];
+  61:../Library/firmware.c **** 
+  62:../Library/firmware.c **** /* Notes:
+  63:../Library/firmware.c ****  *  Two commands needed for writing to flash:
+  64:../Library/firmware.c ****  *   50 - "Prepare Sector", params: start sector, end sector
+  65:../Library/firmware.c ****  *   51 - "Copy ram to flash", params: flash addr, ram addr, length, cclk in khz
+  66:../Library/firmware.c ****  *   52 - "Erase Sectors", params: start sect, end sect, cclk in khz
+  67:../Library/firmware.c ****  *
+  68:../Library/firmware.c ****  *   The sequence is prepare current sector, write bytes.
+  69:../Library/firmware.c ****  *   Each write (which is small than a whole sector) will write-protect
+  70:../Library/firmware.c ****  *   the sector, so each write must be preceeded by a prepare
+  71:../Library/firmware.c ****  */
+  72:../Library/firmware.c **** 
+  73:../Library/firmware.c **** /* End FPC */
+  74:../Library/firmware.c **** 
+  75:../Library/firmware.c **** int load_fw(char* filename)
+  76:../Library/firmware.c **** {
+  77:../Library/firmware.c ****     struct fat16_file_struct * fd;
+  78:../Library/firmware.c ****     int read;
+  79:../Library/firmware.c ****     int i;
+  80:../Library/firmware.c ****     char* addy;
+  81:../Library/firmware.c ****     addy = (char*)STARTADDR;
+  82:../Library/firmware.c **** 
+  83:../Library/firmware.c ****     /* Erase all sectors we could use */
+  84:../Library/firmware.c ****     prep_command[1]=ERASE_SECT_START;
+  85:../Library/firmware.c ****     prep_command[2]=ERASE_SECT_STOP;
+  86:../Library/firmware.c ****     iap_fn(prep_command,result);
+  87:../Library/firmware.c ****     iap_fn(erase_command,result);
+  88:../Library/firmware.c **** 
+  89:../Library/firmware.c ****     /* Open the file */
+  90:../Library/firmware.c ****     fd = root_open(filename);
+  91:../Library/firmware.c **** 
+  92:../Library/firmware.c ****     /* Clear the buffer */
+  93:../Library/firmware.c ****     for(i=0;i<READBUFSIZE;i++)
+  94:../Library/firmware.c ****     {
+  95:../Library/firmware.c ****         readbuf[i]=0;
+  96:../Library/firmware.c ****     }
+  97:../Library/firmware.c **** 
+  98:../Library/firmware.c ****     /* Read the file contents, and print them out */
+  99:../Library/firmware.c ****     while( (read=fat16_read_file(fd,(unsigned char*)readbuf,READBUFSIZE)) > 0 )
+ 100:../Library/firmware.c ****     {
+ 101:../Library/firmware.c **** 
+ 102:../Library/firmware.c ****         // Print Data to UART (DEBUG)
+ 103:../Library/firmware.c ****         /*for(i=0; i<read; i++)
+ 104:../Library/firmware.c ****         {
+ 105:../Library/firmware.c ****             rprintf("%c",readbuf[i]);
+ 106:../Library/firmware.c ****         }*/
+ 107:../Library/firmware.c **** 
+ 108:../Library/firmware.c ****         /* Write Data to Flash */
+ 109:../Library/firmware.c **** 
+ 110:../Library/firmware.c ****         /* Prepare Current Sector */
+ 111:../Library/firmware.c ****         /* This assumes that we are always only writing to one sector!
+ 112:../Library/firmware.c ****                      * This is only true if our write size necessarily aligns
+ 113:../Library/firmware.c ****                      * on proper boundaries. Be careful */
+ 114:../Library/firmware.c ****         prep_command[1] = SECTOR_NUMBER(((int)addy));
+ 115:../Library/firmware.c ****         prep_command[2] = prep_command[1];
+ 116:../Library/firmware.c ****         iap_fn(prep_command,result);
+ 117:../Library/firmware.c **** 
+ 118:../Library/firmware.c **** 
+ 119:../Library/firmware.c ****         /* *** Should check result here... but I'm not */
+ 120:../Library/firmware.c ****         /* If all went according to plan, the sector is primed for write
+ 121:../Library/firmware.c ****                      * (or erase)
+ 122:../Library/firmware.c ****                      */
+ 123:../Library/firmware.c **** 
+ 124:../Library/firmware.c **** 
+ 125:../Library/firmware.c ****         /* Now write data */
+ 126:../Library/firmware.c ****         write_command[1]=(unsigned int)addy;
+ 127:../Library/firmware.c ****         write_command[2]=(unsigned int)readbuf;
+ 128:../Library/firmware.c ****         write_command[3]=READBUFSIZE;
+ 129:../Library/firmware.c ****         iap_fn(write_command,result);
+ 130:../Library/firmware.c **** 
+ 131:../Library/firmware.c ****         /* *** Should check result here... but I'm not */
+ 132:../Library/firmware.c ****         /* If all went according to plan, data is in flash,
+ 133:../Library/firmware.c ****                      * and the sector is locked again
+ 134:../Library/firmware.c ****                      */
+ 135:../Library/firmware.c **** 
+ 136:../Library/firmware.c **** 
+ 137:../Library/firmware.c ****         /* Done with current data, so clear buffer
+ 138:../Library/firmware.c ****                      *  this is because we ALWAYS write out the
+ 139:../Library/firmware.c ****                      *  entire buffer, and we don't want to write
+ 140:../Library/firmware.c ****                      *  garbage data on reads smaller than READBUFSIZE
+ 141:../Library/firmware.c ****                      */
+ 142:../Library/firmware.c ****         for(i=0;i<READBUFSIZE;i++)
+ 143:../Library/firmware.c ****         {
+ 144:../Library/firmware.c ****             readbuf[i]=0;
+ 145:../Library/firmware.c ****         }
+ 146:../Library/firmware.c **** 
+ 147:../Library/firmware.c **** 
+ 148:../Library/firmware.c ****         /* Now update the address-- */
+ 149:../Library/firmware.c ****         addy = addy + READBUFSIZE;
+ 150:../Library/firmware.c **** 
+ 151:../Library/firmware.c ****         /* And we should probably bounds-check... *SIGH*/
+ 152:../Library/firmware.c ****         if((unsigned int)addy > (unsigned int) 0x0007CFFF)
+ 153:../Library/firmware.c ****         {
+ 154:../Library/firmware.c ****             break;
+ 155:../Library/firmware.c ****         }
+ 156:../Library/firmware.c **** 
+ 157:../Library/firmware.c ****     }
+ 158:../Library/firmware.c **** 
+ 159:../Library/firmware.c ****     /* All data copied to FLASH */
+ 160:../Library/firmware.c ****     /* Debug: Report the flash contents */
+ 161:../Library/firmware.c ****     /*  addy = (char*)STARTADDR;*/
+ 162:../Library/firmware.c **** 
+ 163:../Library/firmware.c ****     /*  PRINTF0("Dirty Screech\n\r");*/
+ 164:../Library/firmware.c ****     /*  delay_ms(10000);*/
+ 165:../Library/firmware.c ****     /*  while(addy<(char*)0x00050000)*/
+ 166:../Library/firmware.c ****     /*  {*/
+ 167:../Library/firmware.c ****     /*    __putchar(*addy++);*/
+ 168:../Library/firmware.c ****     /*  }*/
+ 169:../Library/firmware.c ****     /*  PRINTF0("Dirty Screech completed\n\r");*/
+ 170:../Library/firmware.c **** 
+ 171:../Library/firmware.c **** 
+ 172:../Library/firmware.c ****     /* Close the file! */
+ 173:../Library/firmware.c ****     sd_raw_sync();
+ 174:../Library/firmware.c ****     fat16_close_file(fd);
+ 175:../Library/firmware.c ****     root_delete(filename);
+ 176:../Library/firmware.c **** 
+ 177:../Library/firmware.c ****     return 0;
+ 178:../Library/firmware.c **** }
+ 179:../Library/firmware.c **** 
+ 180:../Library/firmware.c **** void call_firmware(void)
+ 181:../Library/firmware.c **** {
+  16              	@ Function supports interworking.
+  17              		@ args = 0, pretend = 0, frame = 0
+  18              		@ frame_needed = 0, uses_anonymous_args = 0
+  19              		str	lr, [sp, #-4]!
+  20 0000 04E02DE5 	.LCFI0:
+  21              		.loc 1 186 0
+ 182:../Library/firmware.c **** oid)
+ 183:../Library/firmware.c **** {
+ 184:../Library/firmware.c ****     /* Note that we're calling a routine that *SHOULD*
+ 185:../Library/firmware.c ****            * re-init the stack... so this function should never return...
+ 186:../Library/firmware.c ****            */
+  22              	3, #65536
+  23 0004 0138A0E3 		mov	lr, pc
+  24 0008 0FE0A0E1 		bx	r3
+  25 000c 13FF2FE1 		.loc 1 188 0
+ 187:../Library/firmware.c ****  */
+ 188:../Library/firmware.c ****     void(*fncall)(void)=(void*)STARTADDR;
+  26              		lr, [sp], #4
+  27 0010 04E09DE4 		bx	lr
+  28 0014 1EFF2FE1 	.LFE3:
+  30              		.align	2
+  31              		.global	load_fw
+  33              	load_fw:
+  34              	.LFB2:
+  35              		.loc 1 76 0
+  36              		@ Function supports interworking.
+  37              		@ args = 0, pretend = 0, frame = 0
+  38              		@ frame_needed = 0, uses_anonymous_args = 0
+  39              	.LVL0:
+  40              		.loc 1 84 0
+  41              		ldr	r2, .L19
+  42 0018 30219FE5 		mov	r3, #9
+  43 001c 0930A0E3 		str	r3, [r2, #4]
+  44 0020 043082E5 		.loc 1 85 0
+  45              		add	r3, r3, #17
+  46 0024 113083E2 		.loc 1 76 0
+  47              		stmfd	sp!, {r4, r5, r6, r7, r8, lr}
+  48 0028 F0412DE9 	.LCFI1:
+  49              		.loc 1 85 0
+  50              		str	r3, [r2, #8]
+  51 002c 083082E5 		.loc 1 76 0
+  52              		mov	r8, r0
+  53 0030 0080A0E1 		.loc 1 86 0
+  54              		ldr	r4, .L19+4
+  55 0034 18419FE5 		mov	r0, r2
+  56 0038 0200A0E1 	.LVL1:
+  57              		ldr	r1, .L19+8
+  58 003c 14119FE5 		ldr	ip, [r4, #0]
+  59 0040 00C094E5 		mov	lr, pc
+  60 0044 0FE0A0E1 		bx	ip
+  61 0048 1CFF2FE1 		.loc 1 87 0
+  62              		ldr	r1, .L19+8
+  63 004c 04119FE5 		ldr	r0, .L19+12
+  64 0050 04019FE5 		ldr	ip, [r4, #0]
+  65 0054 00C094E5 		mov	lr, pc
+  66 0058 0FE0A0E1 		bx	ip
+  67 005c 1CFF2FE1 		.loc 1 90 0
+  68              		mov	r0, r8
+  69 0060 0800A0E1 		bl	root_open
+  70 0064 FEFFFFEB 		ldr	r2, .L19+16
+  71 0068 F0209FE5 		mov	r7, r0
+  72 006c 0070A0E1 	.LVL2:
+  73              	.L4:
+  74              		.loc 1 95 0
+  75              		mov	r3, #0
+  76 0070 0030A0E3 		strb	r3, [r2], #1
+  77 0074 0130C2E4 		.loc 1 93 0
+  78              		ldr	r3, .L19+20
+  79 0078 E4309FE5 		cmp	r2, r3
+  80 007c 030052E1 		bne	.L4
+  81 0080 FAFFFF1A 		mov	r6, #65536
+  82 0084 0168A0E3 	.LVL3:
+  83              		b	.L6
+  84 0088 210000EA 	.L7:
+  85              		.loc 1 114 0
+  86              		cmp	r6, #495616
+  87 008c 790A56E3 		subge	r3, r6, #495616
+  88 0090 793A46A2 		sublt	r3, r6, #32768
+  89 0094 023946B2 		movge	r3, r3, asr #12
+  90 0098 4336A0A1 		movlt	r3, r3, asr #15
+  91 009c C337A0B1 		addge	r2, r3, #23
+  92 00a0 172083A2 		addlt	r2, r3, #8
+  93 00a4 082083B2 		ldr	r3, .L19
+  94 00a8 A0309FE5 		.loc 1 116 0
+  95              		ldr	r1, .L19+8
+  96 00ac A4109FE5 		mov	r0, r3
+  97 00b0 0300A0E1 		.loc 1 115 0
+  98              		str	r2, [r3, #8]
+  99 00b4 082083E5 		.loc 1 114 0
+ 100              		str	r2, [r3, #4]
+ 101 00b8 042083E5 		.loc 1 116 0
+ 102              		ldr	r5, .L19+4
+ 103 00bc 90509FE5 		ldr	ip, [r5, #0]
+ 104 00c0 00C095E5 		mov	lr, pc
+ 105 00c4 0FE0A0E1 		bx	ip
+ 106 00c8 1CFF2FE1 		.loc 1 127 0
+ 107              		ldr	r4, .L19+16
+ 108 00cc 8C409FE5 		.loc 1 126 0
+ 109              		ldr	r0, .L19+24
+ 110 00d0 90009FE5 		.loc 1 128 0
+ 111              		mov	r3, #512
+ 112 00d4 023CA0E3 		str	r3, [r0, #12]
+ 113 00d8 0C3080E5 		.loc 1 126 0
+ 114              		str	r6, [r0, #4]
+ 115 00dc 046080E5 		.loc 1 127 0
+ 116              		str	r4, [r0, #8]
+ 117 00e0 084080E5 		.loc 1 129 0
+ 118              		ldr	r1, .L19+8
+ 119 00e4 6C109FE5 		ldr	ip, [r5, #0]
+ 120 00e8 00C095E5 		mov	lr, pc
+ 121 00ec 0FE0A0E1 		bx	ip
+ 122 00f0 1CFF2FE1 	.L11:
+ 123              		.loc 1 144 0
+ 124              		mov	r3, #0
+ 125 00f4 0030A0E3 		strb	r3, [r4], #1
+ 126 00f8 0130C4E4 		.loc 1 142 0
+ 127              		ldr	r3, .L19+20
+ 128 00fc 60309FE5 		cmp	r4, r3
+ 129 0100 030054E1 		bne	.L11
+ 130 0104 FAFFFF1A 		.loc 1 149 0
+ 131              		add	r6, r6, #512
+ 132 0108 026C86E2 		.loc 1 152 0
+ 133              		cmp	r6, #512000
+ 134 010c 7D0A56E3 		beq	.L13
+ 135 0110 0600000A 	.L6:
+ 136              		.loc 1 99 0
+ 137              		mov	r0, r7
+ 138 0114 0700A0E1 		ldr	r1, .L19+16
+ 139 0118 40109FE5 		mov	r2, #512
+ 140 011c 022CA0E3 		bl	fat16_read_file
+ 141 0120 FEFFFFEB 		mov	r0, r0, asl #16
+ 142 0124 0008A0E1 		cmp	r0, #0
+ 143 0128 000050E3 		bgt	.L7
+ 144 012c D6FFFFCA 	.L13:
+ 145              		.loc 1 173 0
+ 146              		bl	sd_raw_sync
+ 147 0130 FEFFFFEB 		.loc 1 174 0
+ 148              		mov	r0, r7
+ 149 0134 0700A0E1 		bl	fat16_close_file
+ 150 0138 FEFFFFEB 		.loc 1 175 0
+ 151              		mov	r0, r8
+ 152 013c 0800A0E1 		bl	root_delete
+ 153 0140 FEFFFFEB 		.loc 1 178 0
+ 154              		mov	r0, #0
+ 155 0144 0000A0E3 		ldmfd	sp!, {r4, r5, r6, r7, r8, lr}
+ 156 0148 F041BDE8 		bx	lr
+ 157 014c 1EFF2FE1 	.L20:
+ 158              		.align	2
+ 159              	.L19:
+ 160              		.word	prep_command
+ 161 0150 00000000 		.word	iap_fn
+ 162 0154 00000000 		.word	result
+ 163 0158 00000000 		.word	erase_command
+ 164 015c 00000000 		.word	readbuf
+ 165 0160 00000000 		.word	readbuf+512
+ 166 0164 00020000 		.word	write_command
+ 167 0168 00000000 	.LFE2:
+ 169              		.global	iap_fn
+ 170              		.data
+ 171              		.align	2
+ 174              	iap_fn:
+ 175              		.word	2147483633
+ 176 0000 F1FFFF7F 		.global	prep_command
+ 177              		.align	2
+ 180              	prep_command:
+ 181              		.word	50
+ 182 0004 32000000 		.word	11
+ 183 0008 0B000000 		.word	11
+ 184 000c 0B000000 		.word	0
+ 185 0010 00000000 		.word	0
+ 186 0014 00000000 		.global	write_command
+ 187              		.align	2
+ 190              	write_command:
+ 191              		.word	51
+ 192 0018 33000000 		.word	0
+ 193 001c 00000000 		.word	0
+ 194 0020 00000000 		.word	0
+ 195 0024 00000000 		.word	60000
+ 196 0028 60EA0000 		.global	erase_command
+ 197              		.align	2
+ 200              	erase_command:
+ 201              		.word	52
+ 202 002c 34000000 		.word	9
+ 203 0030 09000000 		.word	26
+ 204 0034 1A000000 		.word	60000
+ 205 0038 60EA0000 		.space	4
+ 206 003c 00000000 		.comm	result,8,4
+ 207              		.comm	readbuf,512,1
+ 208              		.section	.debug_frame,"",%progbits
+ 263              		.section	.debug_loc,"",%progbits
+DEFINED SYMBOLS
+                            *ABS*:00000000 firmware.c
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:13     .text:00000000 call_firmware
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:20     .text:00000000 $a
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:34     .text:00000018 load_fw
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:161    .text:00000150 $d
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:181    .data:00000004 prep_command
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:175    .data:00000000 iap_fn
+                            *COM*:00000008 result
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:201    .data:0000002c erase_command
+                            *COM*:00000200 readbuf
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:191    .data:00000018 write_command
+C:\DOCUME~1\Ryan\LOCALS~1\Temp/cc0Yaaaa.s:176    .data:00000000 $d
+
+UNDEFINED SYMBOLS
+root_open
+fat16_read_file
+sd_raw_sync
+fat16_close_file
+root_delete

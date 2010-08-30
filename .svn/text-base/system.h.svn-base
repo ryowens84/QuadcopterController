@@ -1,0 +1,81 @@
+/******************************************************************************/
+/*  IN2 Rowing Electronics                                                    */
+/*  Copyright Spark Fun Electronics                                           */
+/******************************************************************************/
+/*                                                                            */
+/*    system level, ISRs included in system.c     */
+/*                                                                            */
+/*                                                                            */
+/******************************************************************************/
+
+//Global Vars
+//=============================================
+volatile int screen_type;  // "Big Font" = 0  or "Regular Font" = 1
+//volatile int gps_enable; //1 = enable gps, 0 = keep it off for races
+volatile char* serial_number;
+//=============================================
+
+//General purpose delay
+void delay_ms(int);
+
+// general communications functions
+#define NO_OUTPUT 0
+#define UART_ONLY 1
+#define LCD_ONLY 2
+#define LCD_UART 3
+void set_output(int);
+
+//Power down will shut everything off
+void power_down(void);
+
+// Update certion icon behaviour
+void update_icons(void);
+
+// calls system_init() to set clock, sets up interrupts, sets up timer, checks voltage and 
+// powers down if below threshold, then enables regulator for LCD and GPS
+void boot_up(void);
+
+// buttons, these return a value of how long a button was held down AFTER it was released.
+unsigned int bD(void);
+unsigned int bM(void);
+unsigned int bU(void);
+unsigned int bE(void);
+
+// these return how long a button has been held down AS it is being held.  (reset to 0 when 
+// button released .
+unsigned int bE_hold(void);
+unsigned int bU_hold(void);
+unsigned int bD_hold(void);
+void bE_hold_reset(void);
+void bU_hold_reset(void);
+void bD_hold_reset(void);
+
+// return pointer to buffers holding acceleration values
+int *get_accelX(void);
+int *get_accelY(void);
+int *get_accelZ(void);
+
+//Reset processor with WDT
+void reset(void);
+
+void update_buttons(void);
+
+//Unknowns:
+int get_output(void);
+void catch_errors(void);
+void StartISP(unsigned long wdticks);
+
+//Error msg
+void err(int);
+
+#define FREE_BOUND 30
+#define FREE_CENTER 512
+#define FREE_HI FREE_CENTER+FREE_BOUND
+#define FREE_LO FREE_CENTER-FREE_BOUND
+//Look for weightlessness (no G vectors)
+#define FREE_ERR(x,y,z) ((FREE_LO <= x) && \
+                         (x <= FREE_HI) && \
+                         (FREE_LO <= y) && \
+                         (y <= FREE_HI) && \
+                         (FREE_LO <= z) && \
+                         (z <= FREE_HI) )

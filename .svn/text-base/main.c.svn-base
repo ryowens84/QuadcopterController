@@ -1,0 +1,144 @@
+/*
+	In2Rowing Main Firmware
+	NES : 10/23/07
+
+	Moved from system.c to lipomod.c:
+	get_battery_level
+	get_charge_status
+	vcc_p_control
+	vcc_g_control
+	
+	Moved get_char_uart1 from system.c to intcomm1.c
+	Moved put_char_uart1 from system.c to intcomm1.c
+	
+	Removed put_char from system.c. Taken care of in serial.c
+	
+	buttons.c is no longer used and can be deleted. Include needs to be removed from system.c	
+	
+	Modified In2_graphics->LCD_put_char
+	
+	Protocol file is floating around. Only found in LogScreen? Sysmenu
+	
+	11-4-07: Added test routines and moved EEPROM to sector 8. 8 is a 32k sector so it's a 
+	huge waste of space, but the boot loader butts right up to the end of sector 6 so I am
+	a little scare to put EEPROM in secor 7 (nice, small 4k sector).
+	
+	Test routines will fire when buttons 1 and 3 are held (face of unit, counting from left, 1234) 
+	during boot up. Once boot up is complete, test routines are not available.
+	
+	SD Format function written and well tested. SD format function is written into bootloader
+	before SD is mounted for FAT16. Will fire when buttons 1 and 2 are held during boot up. Will not 
+	fire after boot up.
+	
+	MSP constant on fuction has been written into MSP code base. MSP will turn LPC on constantly
+	when buttons 1 and 4 are detected during boot. Will not fire once the unit is started normally.
+	You must do a 4 button reset to escape this function. Use this function to program the LPC
+	with the initial bootloader.
+	
+	Boot times have been significantly decreased to 100s of miliseconds. I still need to re-write the 
+	open_log function. After 20-30 logs have been created, the boot up time is very slow (seconds).
+	
+	Serial number can be written and viewed using the test routines (see above).
+	
+	To do : 
+	Re-write open_log function to run faster (done)
+	Incorporate command into MSP base to enable control over the charge LED from LPC. Would
+	be good for general purpose indicator. (done)
+	
+*/
+
+#include <stdio.h>
+#include "LPC214x.h"
+
+//UART0 Debugging
+#include "serial.h"
+#include "rprintf.h"
+
+//Core functions
+#include "system.h"
+
+//Needed for main function calls
+#include "gps.h"
+#include "IN2_graphics.h"
+#include "ScreenManage.h"
+#include "CFAX.h"
+#include "egg.h"
+#include "main_msc.h"
+#include "DataLog.h"
+
+//Button scanning
+#include "lipomod.h"
+
+#define ON	0
+#define OFF	1
+
+#define USB_VCC	23
+
+int main (void)
+{
+	int newScreen, currentScreen;
+	int button_pressed, power_off_button = 0;
+	
+	/* Bring up:
+		SPI : MSP Monitor - Send I'm alive #
+		UART0 : Debug rprintfs
+		Scan for entry to test routines
+		Peripheral Power : SD, LCD, Accel
+		Init LCD : Display Logo
+		Init Buffers : Accel and IIR
+		Init SD : Open root and log
+		UART1 Interrupts : GPS
+		Timer0 Interrupts : RTC
+	*/
+	boot_up();
+
+    currentScreen = MAIN_SCREEN; //Start on main screen
+
+	while(1)
+	{
+        GPS_parse_buffer(); //Empty the GPS buffer, parse if necessary
+
+        LOG_main_update(); //Update the main log
+
+        update_icons(); //Update any top-of-screen icons
+
+        catch_errors(); //Catch any error conditions
+
+        newScreen = maintain_screen(currentScreen); //Update the screen (maintain)
+
+        //If we have a non-zero return, then we've got a new screen. Do construction and switch screen
+	if (newScreen)
+        {
+            construct_screen(newScreen);
+            currentScreen = newScreen;
+        }
+
+		//Scan for attached USB cable
+		if(IOPIN0 & (1<<USB_VCC))
+		{
+			rprintf("USB Detected\n");
+
+			newScreen = USB_CONNECT_SCREEN;
+			construct_screen(USB_CONNECT_SCREEN);
+			currentScreen = newScreen;
+		}
+		
+		//Scan for button hold turn off
+		button_pressed = get_geninfo();
+		if( (button_pressed|0xF0) == 0xF2) //Menu button
+		{
+			power_off_button++;
+			if (power_off_button == 35) power_down();
+		}
+		else
+		{
+			power_off_button = 0;
+		}
+
+        LCD_paint_screen(); //Update the screen from bufram
+
+        delay_ms(10); //Wait
+	}
+
+    return 0;
+}
