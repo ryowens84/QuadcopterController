@@ -9,7 +9,7 @@ class ADXL345: public I2C
 {
 	public:
 		ADXL345(int port, char i2c_address);
-		void begin(void);
+		char begin(void);
 		char read(char * values, char length);
 		char write(char * values, char length);
 		void powerDown(void);
@@ -28,8 +28,7 @@ class ADXL345: public I2C
 //                  Pin Definitions
 //
 //**********************************************************
-
-
+#define ADXL_ADDR	0xA6
 
 //ADXL Register Map
 #define	DEVID			0x00	//Device ID Register

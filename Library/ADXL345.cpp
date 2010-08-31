@@ -26,7 +26,7 @@ ADXL345::ADXL345(int port, char i2c_address)
 	
 }
 
-void ADXL345::begin(void)
+char ADXL345::begin(void)
 {
 	char values[2];
 	configure();
@@ -43,7 +43,7 @@ void ADXL345::begin(void)
 	ADXL345.write(INT_MAP, ~FREE_FALL);		//Map the Free Fall interrupt to pin INT1; all other interrupts to INT2
 	ADXL345.write(INT_ENABLE, FREE_FALL);	//Activate the 'Free Fall' Interrupt
 	*/
-	write(values, 2);		//Put the Accelerometer into measurement mode	
+	return write(values, 2);		//Put the Accelerometer into measurement mode	
 }
 
 void ADXL345::powerDown(void)

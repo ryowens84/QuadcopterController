@@ -74,7 +74,8 @@ CPPSRC =
 CPPSRCARM = $(TARGET).cpp
 CPPSRCARM += $(LIBPATH)ADXL345.cpp
 CPPSRCARM += $(LIBPATH)I2C.cpp
-
+CPPSRCARM += $(LIBPATH)HMC5843.cpp
+CPPSRCARM += $(LIBPATH)ITG3200.cpp
 
 # List Assembler source files here.
 # Make them always end in a capital .S.  Files ending in a lowercase .s

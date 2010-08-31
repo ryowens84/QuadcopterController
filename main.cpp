@@ -11,7 +11,6 @@
 extern "C"{
 #include "rootdir.h"
 #include "sd_raw.h"
-//#include "LPC214x.h"
 #include "LPC21xx_SFE.h"
 #include "serial.h"
 #include "rprintf.h"
@@ -25,28 +24,11 @@ extern "C"{
 //					External Component Libs
 //*******************************************************
 #include "ADXL345.h"
+#include "HMC5843.h"
+#include "ITG3200.h"
 #include "I2C.h"
 //#include "gps.h"
 
-
-/* ************************ Register map for the HMC5843 ****************************/
-//I2C Address for the HMC5843
-#define HMC_ADDR	0x3C
-
-//HMC5843 Register Addresses
-#define	CONFIG_REGA	0
-#define	CONFIG_REGB	1
-#define	MODE_REG	2
-#define	DATA_OUT_X_H	3
-#define DATA_OUT_X_L	4
-#define DATA_OUT_Y_H	5
-#define	DATA_OUT_Y_L	6
-#define	DATA_OUT_Z_H	7
-#define	DATA_OUT_Z_L	8
-#define	STATUS_REG		9
-#define ID_REGA		10
-#define	ID_REGB		11
-#define	ID_REGC		12
 
 //*******************************************************
 //					Core Functions
@@ -81,15 +63,6 @@ int gps_message_index=0, gps_message_size=0;	//index for copying messages to dif
 int final_gps_message_size=0;
 //GPSdata GPS;	//GPS Struct to hold GPS coordinates.  See PackageTracker.h for Structure definition
 
-//Pressure Sensor (SCP100) Values
-unsigned int scp_pressure;
-int scp_temp;
-char new_scp_data;
-
-//Humidity Sensor (SHT15) Values
-unsigned int sht_temp, sht_humidity;
-char new_sht_data;
-
 //Accelerometer (ADXL345) Values
 signed int acceleration_x, acceleration_y, acceleration_z;
 
@@ -115,8 +88,9 @@ unsigned int power_register_values;			//Holds the value to load to the power reg
 char read_sensors, new_sensor_data;			//Global flag indicating an accelerometer reading has been completed
 char wake_event=0;
 
-ADXL345 accelerometer(0, 0xA6);	//ADXL345 is on I2C Port 0. I2C address is 0xA6.
-//I2C i2c;
+ADXL345 accelerometer(0, ADXL_ADDR);	//ADXL345 is on I2C Port 0. I2C address is 0xA6.
+HMC5843 compass(0, HMC_ADDR);
+ITG3200	gyro(0, ITG_ADDR);
 
 int main (void)
 {
@@ -125,25 +99,14 @@ int main (void)
 //*******************************************************
 	//Initialize ARM I/O
 	bootUp();			//Init. I/O ports, Comm protocols and interrupts
-	createLogFile();	//Create a new log file in the root of the SD card
+	//createLogFile();	//Create a new log file in the root of the SD card
 	
-	rprintf("File created and written to\n\r");
-	
+	//rprintf("File created and written to\n\r");
+	rprintf("Start\n\r");
 	char values[7];
 	char status=0;
-	/*
-	i2c.configure();
-	values[0]=CONFIG_REGA;	//Set the HMC module to communicate with Configuration Reg. A	
-	values[1]=0x14;			//Set the update rate to 50 Hz.
-	status=i2c.send(HMC_ADDR, values, WRITE, 2);	//Write to the HMC to set the register to be read.
-	
-	values[0]=MODE_REG;	//Set the HMC module to read the Configuration Reg. A	
-	values[1]=0x00;			//Set the HMC to continuous conversion mode
-	i2c.send(HMC_ADDR, values, WRITE, 2);	//Write the new data to the HMC register.
-	i2c.send(HMC_ADDR, values, WRITE, 1);	//Set up the address on the I2C module for a read.
-	i2c.send(HMC_ADDR, values, READ, 1);	//Read the contents of the register		
-	rprintf("Mode New Contents: %02x\n\r", values[0]);
-*/
+
+/*
 	accelerometer.begin();
 	values[0]=POWER_CTL;
 	status=accelerometer.read(values, 1);
@@ -167,6 +130,39 @@ int main (void)
 				rprintf("%02x%02x\t", values[i*2], values[i*2+1]);
 		rprintf("\n\r");
 	}
+*/
+	/*
+	while(!compass.begin()){
+		rprintf("Begin Failed\n\r");
+		delay_ms(100);
+	}
+	values[0]=MODE_REG;
+	while(!compass.read(values, 1));
+	rprintf("Mode: %02x\n\r", values[0]);	
+		
+	status=0;
+	while(1){
+		while(!(status & (1<<0))){
+			values[0]=STATUS_REG;
+			while(!compass.read(values,  1));	//Read the Status Register
+			status=values[0];
+			rprintf("Status: %02x\n\r", status);
+			delay_ms(100);
+		}	
+	
+		values[0]=DATA_OUT_X_H;
+		while(!compass.read(values, 6));
+		for(int i=0; i<3; i++)
+			rprintf("%02x%02x\t", values[i*2], values[i*2+1]);
+		rprintf("\n\r");
+	}	
+	*/
+	gyro.begin();
+	values[0]=WHO_AM_I;
+	gyro.read(values, 1);
+	rprintf("Who am I: %02x\n\r", values[0]);
+	while(1);
+
 	/*
 	//Initialize the GPS
 	initializeGps();		//Send the initialization strings
