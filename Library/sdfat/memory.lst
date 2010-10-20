@@ -1,0 +1,428 @@
+   1              		.file	"memory.cpp"
+   9              	.Ltext0:
+  10              		.align	2
+  11              		.global	_ZN7cMemoryC2Ev
+  13              	_ZN7cMemoryC2Ev:
+  14              	.LFB3:
+  15              		.file 1 "../Library/sdfat/memory.cpp"
+   1:../Library/sdfat/memory.cpp **** /*
+   2:../Library/sdfat/memory.cpp **** 	Memory Library
+   3:../Library/sdfat/memory.cpp **** 	
+   4:../Library/sdfat/memory.cpp **** 	Used as an interface for the sdFat library
+   5:../Library/sdfat/memory.cpp **** 	
+   6:../Library/sdfat/memory.cpp **** 	by Ryan Owens
+   7:../Library/sdfat/memory.cpp **** 	http://www.sparkfun.com
+   8:../Library/sdfat/memory.cpp **** 	
+   9:../Library/sdfat/memory.cpp **** 	Example Code:
+  10:../Library/sdfat/memory.cpp **** 	test.create("Test", ".csv");
+  11:../Library/sdfat/memory.cpp **** 	test.save("I got it working!");
+  12:../Library/sdfat/memory.cpp **** 	test.close();	
+  13:../Library/sdfat/memory.cpp ****  
+  14:../Library/sdfat/memory.cpp **** */
+  15:../Library/sdfat/memory.cpp **** #include "memory.h"
+  16:../Library/sdfat/memory.cpp **** #include <stdlib.h>
+  17:../Library/sdfat/memory.cpp **** #include <stdio.h>
+  18:../Library/sdfat/memory.cpp **** #include "LPC214x.h"
+  19:../Library/sdfat/memory.cpp **** #include "string.h"
+  20:../Library/sdfat/memory.cpp **** 
+  21:../Library/sdfat/memory.cpp **** 
+  22:../Library/sdfat/memory.cpp **** extern "C"{
+  23:../Library/sdfat/memory.cpp **** 	#include "rootdir.h"
+  24:../Library/sdfat/memory.cpp **** 	#include "fat16.h"
+  25:../Library/sdfat/memory.cpp **** 	#include "sd_raw.h"
+  26:../Library/sdfat/memory.cpp **** 	//#include "delay.h"
+  27:../Library/sdfat/memory.cpp **** }
+  28:../Library/sdfat/memory.cpp **** 
+  29:../Library/sdfat/memory.cpp **** #define GLOBALOBJECT
+  30:../Library/sdfat/memory.cpp **** #define DEBUG
+  31:../Library/sdfat/memory.cpp **** 
+  32:../Library/sdfat/memory.cpp **** cMemory::cMemory(void)
+  16              	 Function supports interworking.
+  17              		@ args = 0, pretend = 0, frame = 0
+  18              		@ frame_needed = 0, uses_anonymous_args = 0
+  19              		@ link register save eliminated.
+  20              	.LVL0:
+  21              	.LBB2:
+  22              		.loc 1 34 0
+  33:../Library/sdfat/memory.cpp **** {
+  34:../Library/sdfat/memory.cpp **** 	handle=NULL;
+  23              	, #0
+  24 0000 0030A0E3 	.LBE2:
+  25              		.loc 1 32 0
+  26              		@ lr needed for prologue
+  27              	.LBB3:
+  28              		.loc 1 34 0
+  29              		str	r3, [r0, #32]
+  30 0004 203080E5 	.LBE3:
+  31              		.loc 1 35 0
+  35:../Library/sdfat/memory.cpp **** }
+  32              	FE3:
+  34              		.global	__gxx_personality_sj0
+  35              		.align	2
+  36              		.global	_ZN7cMemoryC1Ev
+  38              	_ZN7cMemoryC1Ev:
+  39              	.LFB4:
+  40              		.loc 1 32 0
+  41              		@ Function supports interworking.
+  42              		@ args = 0, pretend = 0, frame = 0
+  43              		@ frame_needed = 0, uses_anonymous_args = 0
+  44              		@ link register save eliminated.
+  45              	.LVL1:
+  46              	.LBB4:
+  47              		.loc 1 34 0
+  48              		mov	r3, #0
+  49              	.LBE4:
+  50 000c 0030A0E3 		.loc 1 32 0
+  51              		@ lr needed for prologue
+  52              	.LBB5:
+  53              		.loc 1 34 0
+  54              		str	r3, [r0, #32]
+  55              	.LBE5:
+  56 0010 203080E5 		.loc 1 35 0
+  57              		bx	lr
+  58              	.LFE4:
+  60              		.align	2
+  61              		.global	_Z11memoryBeginv
+  63              	_Z11memoryBeginv:
+  64              	.LFB9:
+  65              		.loc 1 106 0
+  66              		@ Function supports interworking.
+  36:../Library/sdfat/memory.cpp **** 
+  37:../Library/sdfat/memory.cpp **** int cMemory::create(const char * name, const char * extension)
+  38:../Library/sdfat/memory.cpp **** {
+  39:../Library/sdfat/memory.cpp **** 	int file_number=0;
+  40:../Library/sdfat/memory.cpp **** 	//char * file_name;
+  41:../Library/sdfat/memory.cpp **** 
+  42:../Library/sdfat/memory.cpp **** 	//&file_name[0]=strcpy(&file_name[0], name);
+  43:../Library/sdfat/memory.cpp **** 	strcpy(&file_name[0], name);
+  44:../Library/sdfat/memory.cpp **** 	sprintf(file_name+strlen(file_name), "%03d", file_number);
+  45:../Library/sdfat/memory.cpp **** 	//file_name = strcat(file_name, extension);
+  46:../Library/sdfat/memory.cpp **** 	strcat(&file_name[0], extension);
+  47:../Library/sdfat/memory.cpp **** 	
+  48:../Library/sdfat/memory.cpp **** 	//Check to see if the file already exists in the root directory.
+  49:../Library/sdfat/memory.cpp ****     while(root_file_exists(file_name))
+  50:../Library/sdfat/memory.cpp ****     {
+  51:../Library/sdfat/memory.cpp ****         file_number++;	//If the file already exists, increment the file number and check again.
+  52:../Library/sdfat/memory.cpp ****         if(file_number == 999)
+  53:../Library/sdfat/memory.cpp ****         {
+  54:../Library/sdfat/memory.cpp ****             return 0;
+  55:../Library/sdfat/memory.cpp ****         }
+  56:../Library/sdfat/memory.cpp **** 		//file_name=strcpy(file_name, name);
+  57:../Library/sdfat/memory.cpp **** 		strcpy(&file_name[0], name);
+  58:../Library/sdfat/memory.cpp **** 		sprintf(file_name+strlen(file_name), "%03d", file_number);
+  59:../Library/sdfat/memory.cpp **** 		//file_name = strcat(file_name, extension);
+  60:../Library/sdfat/memory.cpp **** 		strcat(&file_name[0], extension);
+  61:../Library/sdfat/memory.cpp ****     }
+  62:../Library/sdfat/memory.cpp **** 	
+  63:../Library/sdfat/memory.cpp **** 	//Get the file handle of the new file.  We will log the data to this file
+  64:../Library/sdfat/memory.cpp **** 	handle = root_open_new(file_name);	
+  65:../Library/sdfat/memory.cpp **** 	if(handle == NULL) return 0;
+  66:../Library/sdfat/memory.cpp **** 	
+  67:../Library/sdfat/memory.cpp **** 	return 1;
+  68:../Library/sdfat/memory.cpp **** }
+  69:../Library/sdfat/memory.cpp **** 
+  70:../Library/sdfat/memory.cpp **** int cMemory::save(char * data)
+  71:../Library/sdfat/memory.cpp **** {
+  72:../Library/sdfat/memory.cpp **** 	int error=0;
+  73:../Library/sdfat/memory.cpp **** 	
+  74:../Library/sdfat/memory.cpp **** 	if(handle == NULL)return 0;
+  75:../Library/sdfat/memory.cpp **** 	if(strlen(data)==0)return 0;
+  76:../Library/sdfat/memory.cpp **** 	
+  77:../Library/sdfat/memory.cpp **** 	while(error < 10)
+  78:../Library/sdfat/memory.cpp **** 	{
+  79:../Library/sdfat/memory.cpp **** 		if(fat16_write_file(handle, (const unsigned char *)data, strlen(data))<0)error+=1;
+  80:../Library/sdfat/memory.cpp **** 		else break;
+  81:../Library/sdfat/memory.cpp **** 		//delay_ms(100);
+  82:../Library/sdfat/memory.cpp **** 	}
+  83:../Library/sdfat/memory.cpp **** 	if(error == 10)return 0;
+  84:../Library/sdfat/memory.cpp **** 	
+  85:../Library/sdfat/memory.cpp **** 	error=0;
+  86:../Library/sdfat/memory.cpp **** 	while(error < 10)
+  87:../Library/sdfat/memory.cpp **** 	{
+  88:../Library/sdfat/memory.cpp **** 		if(!sd_raw_sync())error+=1;
+  89:../Library/sdfat/memory.cpp **** 		else break;
+  90:../Library/sdfat/memory.cpp **** 		//delay_ms(100);
+  91:../Library/sdfat/memory.cpp **** 	}
+  92:../Library/sdfat/memory.cpp **** 	if(error == 10) return 0;
+  93:../Library/sdfat/memory.cpp **** 	return 1;
+  94:../Library/sdfat/memory.cpp **** }
+  95:../Library/sdfat/memory.cpp **** 
+  96:../Library/sdfat/memory.cpp **** void cMemory::close(void)
+  97:../Library/sdfat/memory.cpp **** {
+  98:../Library/sdfat/memory.cpp **** 	fat16_close_file(handle);
+  99:../Library/sdfat/memory.cpp **** }
+ 100:../Library/sdfat/memory.cpp **** 
+ 101:../Library/sdfat/memory.cpp **** void cMemory::open(void)
+ 102:../Library/sdfat/memory.cpp **** {
+ 103:../Library/sdfat/memory.cpp **** 	handle = root_open(file_name);
+ 104:../Library/sdfat/memory.cpp **** }
+ 105:../Library/sdfat/memory.cpp **** 
+ 106:../Library/sdfat/memory.cpp **** char memoryBegin(void)
+  67              	
+  68              		@ frame_needed = 0, uses_anonymous_args = 0
+  69              		str	lr, [sp, #-4]!
+  70              	.LCFI0:
+  71 0018 04E02DE5 		.loc 1 109 0
+  72              		bl	sd_raw_init
+ 107:../Library/sdfat/memory.cpp **** {
+ 108:../Library/sdfat/memory.cpp **** 	//Bring up SD and Open the root directory
+ 109:../Library/sdfat/memory.cpp ****     if(!sd_raw_init())
+  73              	r0, #0
+  74 001c FEFFFFEB 		beq	.L8
+  75 0020 000050E3 		.loc 1 113 0
+  76 0024 0200000A 		bl	openroot
+ 110:../Library/sdfat/memory.cpp ****     {
+ 111:../Library/sdfat/memory.cpp ****         return 0;
+ 112:../Library/sdfat/memory.cpp ****     }
+ 113:../Library/sdfat/memory.cpp ****     if(openroot())
+  77              	s	r0, r0, #1
+  78 0028 FEFFFFEB 		movcc	r0, #0
+  79 002c 010070E2 	.L8:
+  80 0030 0000A033 		.loc 1 118 0
+  81              		ldr	lr, [sp], #4
+ 114:../Library/sdfat/memory.cpp ****     {
+ 115:../Library/sdfat/memory.cpp ****         return 0;
+ 116:../Library/sdfat/memory.cpp ****     }
+ 117:../Library/sdfat/memory.cpp **** 	return 1;
+ 118:../Library/sdfat/memory.cpp **** }
+  82              	r
+  83 0034 04E09DE4 	.LFE9:
+  85              		.align	2
+  86              		.global	_ZN7cMemory4openEv
+  88              	_ZN7cMemory4openEv:
+  89              	.LFB8:
+  90              		.loc 1 101 0
+  91              		@ Function supports interworking.
+  92              		@ args = 0, pretend = 0, frame = 0
+  93              		@ frame_needed = 0, uses_anonymous_args = 0
+  94              	.LVL2:
+  95              		stmfd	sp!, {r4, lr}
+  96              	.LCFI1:
+  97 003c 10402DE9 		.loc 1 101 0
+  98              		mov	r4, r0
+  99              		.loc 1 103 0
+ 100 0040 0040A0E1 		bl	root_open
+ 101              	.LVL3:
+ 102 0044 FEFFFFEB 		str	r0, [r4, #32]
+ 103              		.loc 1 104 0
+ 104 0048 200084E5 		ldmfd	sp!, {r4, lr}
+ 105              		bx	lr
+ 106 004c 1040BDE8 	.LFE8:
+ 108              		.align	2
+ 109              		.global	_ZN7cMemory5closeEv
+ 111              	_ZN7cMemory5closeEv:
+ 112              	.LFB7:
+ 113              		.loc 1 96 0
+ 114              		@ Function supports interworking.
+ 115              		@ args = 0, pretend = 0, frame = 0
+ 116              		@ frame_needed = 0, uses_anonymous_args = 0
+ 117              	.LVL4:
+ 118              		str	lr, [sp, #-4]!
+ 119              	.LCFI2:
+ 120 0054 04E02DE5 		.loc 1 98 0
+ 121              		ldr	r0, [r0, #32]
+ 122              	.LVL5:
+ 123 0058 200090E5 		bl	fat16_close_file
+ 124              		.loc 1 99 0
+ 125 005c FEFFFFEB 		ldr	lr, [sp], #4
+ 126              		bx	lr
+ 127 0060 04E09DE4 	.LFE7:
+ 129              		.align	2
+ 130              		.global	_ZN7cMemory4saveEPc
+ 132              	_ZN7cMemory4saveEPc:
+ 133              	.LFB6:
+ 134              		.loc 1 70 0
+ 135              		@ Function supports interworking.
+ 136              		@ args = 0, pretend = 0, frame = 0
+ 137              		@ frame_needed = 0, uses_anonymous_args = 0
+ 138              	.LVL6:
+ 139              	.LBB6:
+ 140              		.loc 1 74 0
+ 141              		ldr	r3, [r0, #32]
+ 142              		cmp	r3, #0
+ 143 0068 203090E5 	.LBE6:
+ 144 006c 000053E3 		.loc 1 70 0
+ 145              		stmfd	sp!, {r4, r5, r6, lr}
+ 146              	.LCFI3:
+ 147 0070 70402DE9 		.loc 1 70 0
+ 148              		mov	r6, r0
+ 149              		mov	r4, r1
+ 150 0074 0060A0E1 	.LBB7:
+ 151 0078 0140A0E1 		.loc 1 74 0
+ 152              		beq	.L15
+ 153              	.LVL7:
+ 154 007c 1A00000A 		.loc 1 75 0
+ 155              		ldrb	r3, [r1, #0]	@ zero_extendqisi2
+ 156              		cmp	r3, #0
+ 157 0080 0030D1E5 		beq	.L15
+ 158 0084 000053E3 	.LVL8:
+ 159 0088 1700000A 		mov	r5, #0
+ 160              	.LVL9:
+ 161 008c 0050A0E3 	.LVL10:
+ 162              	.L18:
+ 163              		.loc 1 79 0
+ 164              		mov	r0, r4
+ 165              		bl	strlen
+ 166 0090 0400A0E1 		mov	r2, r0, asl #16
+ 167 0094 FEFFFFEB 		mov	r2, r2, lsr #16
+ 168 0098 0028A0E1 		ldr	r0, [r6, #32]
+ 169 009c 2228A0E1 		mov	r1, r4
+ 170 00a0 200096E5 		bl	fat16_write_file
+ 171 00a4 0410A0E1 		tst	r0, #32768
+ 172 00a8 FEFFFFEB 		add	r5, r5, #1
+ 173 00ac 020910E3 		beq	.L19
+ 174 00b0 015085E2 		.loc 1 77 0
+ 175 00b4 0200000A 		cmp	r5, #10
+ 176              		beq	.L15
+ 177 00b8 0A0055E3 		b	.L18
+ 178 00bc 0A00000A 	.L19:
+ 179 00c0 F2FFFFEA 		.loc 1 83 0
+ 180              		mov	r4, #0
+ 181              	.LVL11:
+ 182 00c4 0040A0E3 	.L22:
+ 183              		.loc 1 88 0
+ 184              		bl	sd_raw_sync
+ 185              		cmp	r0, #0
+ 186 00c8 FEFFFFEB 		add	r4, r4, #1
+ 187 00cc 000050E3 		bne	.L28
+ 188 00d0 014084E2 		.loc 1 86 0
+ 189 00d4 0200001A 		cmp	r4, #10
+ 190              		bne	.L22
+ 191 00d8 0A0054E3 		b	.L25
+ 192 00dc F9FFFF1A 	.L28:
+ 193 00e0 020000EA 		.loc 1 88 0
+ 194              		mov	r0, #1
+ 195              		b	.L25
+ 196 00e4 0100A0E3 	.LVL12:
+ 197 00e8 000000EA 	.L15:
+ 198              		.loc 1 86 0
+ 199              		mov	r0, #0
+ 200              	.LVL13:
+ 201 00ec 0000A0E3 	.L25:
+ 202              	.LBE7:
+ 203              		.loc 1 94 0
+ 204              		ldmfd	sp!, {r4, r5, r6, lr}
+ 205              		bx	lr
+ 206 00f0 7040BDE8 	.LFE6:
+ 208              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 209              		.align	2
+ 210              	.LC0:
+ 211              		.ascii	"%03d\000"
+ 212              		.text
+ 213 0000 25303364 		.align	2
+ 213      00
+ 214 0005 000000   		.global	_ZN7cMemory6createEPKcS1_
+ 216              	_ZN7cMemory6createEPKcS1_:
+ 217              	.LFB5:
+ 218              		.loc 1 37 0
+ 219              		@ Function supports interworking.
+ 220              		@ args = 0, pretend = 0, frame = 0
+ 221              		@ frame_needed = 0, uses_anonymous_args = 0
+ 222              	.LVL14:
+ 223              		stmfd	sp!, {r4, r5, r6, r7, lr}
+ 224              	.LCFI4:
+ 225 00f8 F0402DE9 		.loc 1 37 0
+ 226              		mov	r4, r0
+ 227              		mov	r6, r2
+ 228 00fc 0040A0E1 		mov	r7, r1
+ 229 0100 0260A0E1 	.LBB8:
+ 230 0104 0170A0E1 		.loc 1 43 0
+ 231              		bl	strcpy
+ 232              	.LVL15:
+ 233 0108 FEFFFFEB 		.loc 1 44 0
+ 234              		mov	r0, r4
+ 235              		bl	strlen
+ 236 010c 0400A0E1 		mov	r2, #0
+ 237 0110 FEFFFFEB 		ldr	r1, .L40
+ 238 0114 0020A0E3 		add	r0, r4, r0
+ 239 0118 84109FE5 		bl	sprintf
+ 240 011c 000084E0 		.loc 1 46 0
+ 241 0120 FEFFFFEB 		mov	r0, r4
+ 242              		mov	r1, r6
+ 243 0124 0400A0E1 		bl	strcat
+ 244 0128 0610A0E1 		mov	r5, #0
+ 245 012c FEFFFFEB 	.LVL16:
+ 246 0130 0050A0E3 		b	.L33
+ 247              	.LVL17:
+ 248 0134 0D0000EA 	.L34:
+ 249              		.loc 1 52 0
+ 250              		ldr	r3, .L40+4
+ 251              		cmp	r5, r3
+ 252 0138 68309FE5 		moveq	r0, #0
+ 253 013c 030055E1 		beq	.L37
+ 254 0140 0000A003 	.L35:
+ 255 0144 1400000A 		.loc 1 57 0
+ 256              		bl	strcpy
+ 257              	.LVL18:
+ 258 0148 FEFFFFEB 		.loc 1 58 0
+ 259              		mov	r0, r4
+ 260              		bl	strlen
+ 261 014c 0400A0E1 		ldr	r1, .L40
+ 262 0150 FEFFFFEB 		add	r0, r4, r0
+ 263 0154 48109FE5 		mov	r2, r5
+ 264 0158 000084E0 		bl	sprintf
+ 265 015c 0520A0E1 		.loc 1 60 0
+ 266 0160 FEFFFFEB 		mov	r0, r4
+ 267              		mov	r1, r6
+ 268 0164 0400A0E1 		bl	strcat
+ 269 0168 0610A0E1 	.L33:
+ 270 016c FEFFFFEB 		.loc 1 49 0
+ 271              		mov	r0, r4
+ 272              		bl	root_file_exists
+ 273 0170 0400A0E1 		cmp	r0, #0
+ 274 0174 FEFFFFEB 		.loc 1 57 0
+ 275 0178 000050E3 		mov	r1, r7
+ 276              		.loc 1 51 0
+ 277 017c 0710A0E1 		add	r5, r5, #1
+ 278              		.loc 1 57 0
+ 279 0180 015085E2 		mov	r0, r4
+ 280              		.loc 1 49 0
+ 281 0184 0400A0E1 		bne	.L34
+ 282              	.LVL19:
+ 283 0188 EAFFFF1A 		.loc 1 64 0
+ 284              		bl	root_open_new
+ 285              	.LVL20:
+ 286 018c FEFFFFEB 		str	r0, [r4, #32]
+ 287              		subs	r0, r0, #0
+ 288 0190 200084E5 		movne	r0, #1
+ 289 0194 000050E2 	.LVL21:
+ 290 0198 0100A013 	.L37:
+ 291              	.LBE8:
+ 292              		.loc 1 68 0
+ 293              		ldmfd	sp!, {r4, r5, r6, r7, lr}
+ 294              		bx	lr
+ 295 019c F040BDE8 	.L41:
+ 296 01a0 1EFF2FE1 		.align	2
+ 297              	.L40:
+ 298              		.word	.LC0
+ 299              		.word	999
+ 300 01a4 00000000 	.LFE5:
+ 302              		.section	.debug_frame,"",%progbits
+ 303              	.Lframe0:
+ 423              	.Ldebug_loc0:
+DEFINED SYMBOLS
+                            *ABS*:00000000 memory.cpp
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:13     .text:00000000 _ZN7cMemoryC2Ev
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:24     .text:00000000 $a
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:40     .text:0000000c _ZN7cMemoryC1Ev
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:65     .text:00000018 _Z11memoryBeginv
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:90     .text:0000003c _ZN7cMemory4openEv
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:113    .text:00000054 _ZN7cMemory5closeEv
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:134    .text:00000068 _ZN7cMemory4saveEPc
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:218    .text:000000f8 _ZN7cMemory6createEPKcS1_
+C:\DOCUME~1\rowens\LOCALS~1\Temp/ccOobaaa.s:300    .text:000001a4 $d
+
+UNDEFINED SYMBOLS
+__gxx_personality_sj0
+sd_raw_init
+openroot
+root_open
+fat16_close_file
+strlen
+fat16_write_file
+sd_raw_sync
+strcpy
+sprintf
+strcat
+root_file_exists
+root_open_new
