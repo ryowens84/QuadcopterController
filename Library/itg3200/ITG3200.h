@@ -14,6 +14,7 @@ class cITG3200: public I2C
 		char read(char * value, char length);
 		char write(char * value, char length);
 		char update(void);
+		void calibrate(void);
 		
 		//Return the values in engineering units (degrees/second and degrees C)
 		float getX(void);
@@ -23,9 +24,9 @@ class cITG3200: public I2C
 		
 	private:
 		//int16_t temp;
-		//int16_t x;
-		//int16_t y;
-		//int16_t z;
+		int16_t x_cal;
+		int16_t y_cal;
+		int16_t z_cal;
 		float xr;
 		float yr;
 		float zr;

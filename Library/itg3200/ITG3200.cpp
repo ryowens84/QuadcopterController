@@ -28,6 +28,7 @@
 extern "C"
 {
 	#include "rprintf.h"
+	#include "timer1ISR.h"	
 }
 
 #define GLOBALOBJECT
@@ -40,6 +41,9 @@ cITG3200::cITG3200(int port, char i2c_address)
 	_i2c_port = port;
 	_i2c_address = i2c_address;
 	
+	x_cal=0;
+	y_cal=0;
+	z_cal=0;
 }
 
 void cITG3200::begin(void)
@@ -111,20 +115,40 @@ char cITG3200::update(void)
 	return 1;
 }
 
+void cITG3200::calibrate(void)
+{
+	long int timeout=0;
+	for(int i=0; i<16; i++)
+	{
+		update();	//Get new values while device is not moving
+		x_cal+=(int16_t)xr;
+		y_cal+=(int16_t)yr;
+		z_cal+=(int16_t)zr;
+		timeout=millis();
+		while(millis() < timeout+100);
+	}
+	x_cal/=16;
+	y_cal/=16;
+	z_cal/=16;
+}
+
 float cITG3200::getX(void)
 {
+	xr -= x_cal;
 	xr = xr/14.375;
 	return xr;
 }
 
 float cITG3200::getY(void)
 {
+	yr -= y_cal;
 	yr = yr/14.375;
 	return yr;
 }
 
 float cITG3200::getZ(void)
 {
+	zr -= z_cal;
 	zr = zr/14.375;
 	return zr;
 }
