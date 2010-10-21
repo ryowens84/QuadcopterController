@@ -14,6 +14,7 @@ RTCPATH = ../Library/rtc/
 DELAYPATH = ../Library/delay/
 TIMERPATH = ../Library/timer/
 SENSORPATH = ../Library/sensor/
+PIDPATH = ../Library/pid/
 
 FLASH_TOOL = LPC12
 #FLASH_TOOL = UVISION
@@ -57,6 +58,7 @@ SRC += $(TIMERPATH)timer1.c
 SRC += $(TIMERPATH)timer1ISR.c
 SRC += $(UARTPATH)uart1.c
 SRC += $(UARTPATH)uart1ISR.c
+SRC += $(PIDPATH)pid.c
 
 #Functions for SD interaction
 SRC += $(SDFATPATH)sd_raw.c 
@@ -153,6 +155,7 @@ EXTRAINCDIRS += $(HMCPATH)
 #EXTRAINCDIRS += $(DELAYPATH)
 EXTRAINCDIRS += $(TIMERPATH)
 EXTRAINCDIRS += $(SENSORPATH)
+EXTRAINCDIRS += $(PIDPATH)
 #EXTRAINCDIRS += ../
 
 

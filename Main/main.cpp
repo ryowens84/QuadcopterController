@@ -28,6 +28,8 @@ extern "C"{
 #include "timer0ISR.h"
 #include "timer1.h"
 #include "timer1ISR.h"
+
+#include "pid.h"
 }
 
 //*******************************************************
@@ -52,6 +54,9 @@ void reset(void);
 char sensors_updated=0;
 char sensor_string[20]="Test";
 long int timeout=0;
+
+double PIDresult = 0.0;
+PID myPID;
 //I2C speed_controller;
 
 //*******************************************************
@@ -71,6 +76,14 @@ int main (void)
 	accelerometer.begin();
 	gyro.begin();
 	compass.begin();
+	
+	PIDInit(&myPID);	//Create space for the PID struct
+	
+	//	Set PID Coefficients (p=1 I=0 D=1.4 WORKS WELL!)
+	myPID.Proportion	= 1.0;	
+	myPID.Integral = 0.05;
+	myPID.Derivative	= 1.7;
+	myPID.SetPoint = 0.0;	//	Set PID Setpoint	
 	
 	VICIntEnable |= INT_TIMER0|INT_TIMER1;
 	rprintf("Stop!!!\n\r");
@@ -155,10 +168,14 @@ int main (void)
 			filter.AccTheta=atan2(filter.RwAcc[0], filter.RwAcc[1])*180/PI;
 			filter.EstTheta=atan2(filter.RwEst[0], filter.RwEst[1])*180/PI;	
 		
+			PIDresult=PIDCalc(&myPID, filter.EstTheta);
+		
 			//sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.AccTheta, filter.EstTheta);
 			//rprintf("%s", sensor_string);
-			sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.RwAcc[0], filter.RwEst[0]);
-			rprintf("%s", sensor_string);			
+			//sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.RwAcc[0], filter.RwEst[0]);
+			//rprintf("%s", sensor_string);			
+			sprintf(&sensor_string[0], "%1.3f\n\r", PIDresult);
+			rprintf("%s", sensor_string);
 			
 		}
 		
