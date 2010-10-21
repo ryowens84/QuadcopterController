@@ -24,13 +24,10 @@ extern "C"{
 #include "serial.h"
 #include "rprintf.h"
 
-//#include "delay.h"
 #include "timer0.h"
 #include "timer0ISR.h"
 #include "timer1.h"
 #include "timer1ISR.h"
-#include "uart1.h"
-#include "uart1ISR.h"
 }
 
 //*******************************************************
@@ -40,9 +37,6 @@ extern "C"{
 #include "ADXL345.h"
 #include "HMC5843.h"
 #include "ITG3200.h"
-//#include "EM408.h"
-//#include "RTC.h"
-//#include "memory.h"
 #include "sensor.h"
 #include "I2C.h"
 
@@ -55,10 +49,9 @@ void reset(void);
 //*******************************************************
 //					Global Variables
 //*******************************************************
-//cMemory sensor;
 char sensors_updated=0;
-char sensor_string[70]="Test";
-
+char sensor_string[20]="Test";
+long int timeout=0;
 //I2C speed_controller;
 
 //*******************************************************
@@ -68,24 +61,24 @@ int main (void)
 {
 	//Initialize ARM I/O
 	bootUp();			//Init. I/O ports, Comm protocols and interrupts
-	//if(!memoryBegin())reset();
 
 	timer0Init(1000000);
 	timer0Match(0, 100, interruptOnMatch | resetOnMatch);
 	
 	timer1Init(1000000);
 	timer1Match(0, 1000, interruptOnMatch | resetOnMatch);
-
-	uart1RxInt(RX1_TRIG_LEV_0);
 	
 	accelerometer.begin();
 	gyro.begin();
 	compass.begin();
 	
-	//sensor.create("sensor", ".csv");
-	//sensor.close();
-	
-	VICIntEnable |= INT_TIMER0|INT_UART1|INT_TIMER1;
+	VICIntEnable |= INT_TIMER0|INT_TIMER1;
+	rprintf("Stop!!!\n\r");
+	timeout = millis();
+	while(millis() < timeout+1000);
+	rprintf("Starting Calibration...\n\r");
+	gyro.calibrate();
+
 	while(1)
 	{
 		if(timer0IntFlag==1)
@@ -98,51 +91,31 @@ int main (void)
 			compass.update();
 			sensors_updated=1;	
 			
+			if(IOPIN0 & LED)LED_OFF();
+			else LED_ON();
+			
 			VICIntEnable |= INT_TIMER0;
-		}
-		
-		if(uart1MessageComplete)
-		{
-			VICIntEnClr |= INT_UART1;
-			
-			uart1MessageComplete=0;
-			//strcpy(gps.message, uart1Message);
-			//gps.updated=1;
-			
-			VICIntEnable |= INT_UART1;
 		}
 		
 		if(sensors_updated)
 		{
 			sensors_updated=0;
-			
-			/*
-			sprintf(&sensor_string[0], "%1.3f,%1.3f,%1.3f,%1.3f,%1.3f,%1.3f,%1.3f,%1.3f,%1.3f\r", 
-				gyro.getX(), gyro.getY(), gyro.getZ(),
-				accelerometer.getX(),accelerometer.getY(), accelerometer.getZ(),
-				compass.getX(), compass.getY(), compass.getZ());
-			*/
-			
-			/*
-			sensor.open();
-			sensor.save(&sensor_string[0]);
-			sensor.close();
-			*/
-			/*
+		
 			filter.last_time=filter.this_time;
 			filter.this_time=millis();	//Get the current number of milliseconds
 			//Calculate Interval Time in milliseconds
 			filter.interval=filter.this_time-filter.last_time;
 			
 			//Populate the RwAcc Array
-			filter.fillAccelValues(accelerometer.getX(), accelerometer.getZ());
+			filter.fillAccelValues(accelerometer.getX(), accelerometer.getZ());		
+			
 			//Normalize the Accelerometers gravity vector
 			filter.normalizeVector(filter.RwAcc);
 			
 			if(filter.first_run)
 			{
 				for(int w=0; w<2; w++)filter.RwGyro[w] = filter.RwAcc[w];
-				filter.first_run=0;
+				filter.first_run-=1;			
 			}
 			else
 			{
@@ -154,7 +127,8 @@ int main (void)
 				//Else, find the 'gyro angle' and calculate the weighted average to find attitude of device.
 				else
 				{
-					filter.this_rate=gyro.getZ();	//Get the current deg/sec from gyroscope.
+					
+					filter.this_rate=gyro.getX();	//Get the current deg/sec from gyroscope.
 					filter.this_angle=filter.this_rate*(filter.interval/1000);	//degree/sec * seconds == degrees
 					
 					filter.Axz = atan2(filter.RwEst[0], filter.RwEst[1])*180/PI;	//Get previous angle in degrees
@@ -175,26 +149,23 @@ int main (void)
 			for(int w=0; w<2; w++)
 			{
 				filter.RwEst[w] = (filter.RwAcc[w] + filter.RwGyro[w] * filter.gyro_weight)/(1+filter.gyro_weight);
-			}
+			}	
 			filter.normalizeVector(filter.RwEst);
 			
 			filter.AccTheta=atan2(filter.RwAcc[0], filter.RwAcc[1])*180/PI;
 			filter.EstTheta=atan2(filter.RwEst[0], filter.RwEst[1])*180/PI;	
+		
+			//sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.AccTheta, filter.EstTheta);
+			//rprintf("%s", sensor_string);
+			sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.RwAcc[0], filter.RwEst[0]);
+			rprintf("%s", sensor_string);			
 			
-			
-			sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.AccTheta, filter.EstTheta);
-			sensor.open();
-			sensor.save(&sensor_string[0]);
-			sensor.close();
-					
-	
-			*/
 		}
 		
 		//If a USB Cable gets plugged in, stop everything!
 		if(IOPIN0 & (1<<23))
 		{
-			VICIntEnClr = INT_UART1 | INT_TIMER0 | INT_TIMER1;	//Stop all running interrupts			
+			VICIntEnClr = INT_TIMER0 | INT_TIMER1;	//Stop all running interrupts			
 			main_msc();								//Open the mass storage device
 			reset();								//Reset to check for new FW
 		}		
@@ -212,7 +183,6 @@ void bootUp(void)
 	//Initialize UART for RPRINTF
     rprintf_devopen(putc_serial0); //Init rprintf
 	init_serial0(9600);		
-    //delay_ms(100);
 	
 	//Initialize I/O Ports and Peripherals
 	IODIR0 |= (LED| XBEE_EN);
@@ -220,9 +190,7 @@ void bootUp(void)
     //Setup the Interrupts
 	//Enable Interrupts
 	VPBDIV=1;										// Set PCLK equal to the System Clock	
-	VICIntSelect = ~(INT_TIMER0 |INT_UART1 | INT_TIMER1);
-	VICVectCntl2 = 0x20 | 7;						//Set up the UART0 interrupt
-	VICVectAddr2 = (unsigned int)ISR_UART1;
+	VICIntSelect = ~(INT_TIMER0|INT_TIMER1);
 	VICVectCntl0 = 0x20 | 4;						//Timer 0 Interrupt
 	VICVectAddr0 = (unsigned int)ISR_Timer0;
 	VICVectCntl1 = 0x20 | 5;						//Timer 1 Interrupt
