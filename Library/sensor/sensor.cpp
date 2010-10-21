@@ -26,7 +26,7 @@ cSensor::cSensor(void)
 	AccTheta=0, EstTheta=0;
 	last_time=0, this_time=0;
 	interval=0;
-	first_run=1;
+	first_run=2;
 }
 
 void cSensor::fillAccelValues(float x, float z)
