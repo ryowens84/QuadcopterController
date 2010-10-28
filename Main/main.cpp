@@ -11,6 +11,7 @@ link
 license
 */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "LPC214x.h"
 #include "target.h"
@@ -56,8 +57,9 @@ char sensor_string[20]="Test";
 long int timeout=0;
 
 double PIDresult = 0.0;
+int16_t power=0;
 PID myPID;
-//I2C speed_controller;
+I2C speed_controller;
 
 //*******************************************************
 //					Main Code
@@ -76,13 +78,14 @@ int main (void)
 	accelerometer.begin();
 	gyro.begin();
 	compass.begin();
+	speed_controller.configure();
 	
 	PIDInit(&myPID);	//Create space for the PID struct
 	
 	//	Set PID Coefficients (p=1 I=0 D=1.4 WORKS WELL!)
-	myPID.Proportion	= 1.0;	
-	myPID.Integral = 0.05;
-	myPID.Derivative	= 1.7;
+	myPID.Proportion	= 1.2;	
+	myPID.Integral = 0.0;
+	myPID.Derivative	= 1.4;
 	myPID.SetPoint = 0.0;	//	Set PID Setpoint	
 	
 	VICIntEnable |= INT_TIMER0|INT_TIMER1;
@@ -174,8 +177,27 @@ int main (void)
 			//rprintf("%s", sensor_string);
 			//sprintf(&sensor_string[0], "%1.3f, %1.3f, %1.3f\n\r", filter.interval/1000, filter.RwAcc[0], filter.RwEst[0]);
 			//rprintf("%s", sensor_string);			
-			sprintf(&sensor_string[0], "%1.3f\n\r", PIDresult);
-			rprintf("%s", sensor_string);
+			//sprintf(&sensor_string[0], "%1.3f\n\r", PIDresult);
+			//rprintf("%s", sensor_string);
+			
+			power = (int16_t)PIDresult;
+			power/=2;
+			
+			if(abs(power) >=24)
+			{
+				if(power > 0)power = 24;
+				else power = -24;
+			}
+			
+			//sprintf(&sensor_string[0], "%d\n\r", power);
+			//rprintf("%s", sensor_string);
+			
+			sensor_string[0]=0;
+			sensor_string[1]=25+power;
+			speed_controller.send(0xB6, sensor_string, WRITE, 2);
+			sensor_string[0]=1;
+			sensor_string[1]=25-power;
+			speed_controller.send(0xB6, sensor_string, WRITE, 2);				
 			
 		}
 		
@@ -185,7 +207,8 @@ int main (void)
 			VICIntEnClr = INT_TIMER0 | INT_TIMER1;	//Stop all running interrupts			
 			main_msc();								//Open the mass storage device
 			reset();								//Reset to check for new FW
-		}		
+		}
+		
 	}
 	
 	
