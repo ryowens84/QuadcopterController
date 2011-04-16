@@ -41,9 +41,9 @@ cITG3200::cITG3200(int port, char i2c_address)
 	_i2c_port = port;
 	_i2c_address = i2c_address;
 	
-	x_cal=0;
-	y_cal=0;
-	z_cal=0;
+	xOffset=0;
+	yOffset=0;
+	zOffset=0;
 }
 
 void cITG3200::begin(void)
@@ -127,34 +127,34 @@ void cITG3200::calibrate(void)
 	for(int i=0; i<16; i++)
 	{
 		update();	//Get new values while device is not moving
-		x_cal+=(int16_t)xr;
-		y_cal+=(int16_t)yr;
-		z_cal+=(int16_t)zr;
+		xOffset+=(int16_t)xr;
+		yOffset+=(int16_t)yr;
+		zOffset+=(int16_t)zr;
 		timeout=millis();
 		while(millis() < timeout+100);
 	}
-	x_cal/=16;
-	y_cal/=16;
-	z_cal/=16;
+	xOffset/=16;
+	yOffset/=16;
+	zOffset/=16;
 }
 
 float cITG3200::getX(void)
 {
-	xr -= x_cal;
+	xr -= xOffset;
 	xr = xr/14.375;
 	return xr;
 }
 
 float cITG3200::getY(void)
 {
-	yr -= y_cal;
+	yr -= yOffset;
 	yr = yr/14.375;
 	return yr;
 }
 
 float cITG3200::getZ(void)
 {
-	zr -= z_cal;
+	zr -= zOffset;
 	zr = zr/14.375;
 	return zr;
 }
@@ -166,3 +166,14 @@ float cITG3200::getTemp(void)
 	tempr += 35;	//Add 35 degrees C to compensate for the offset
 	return tempr;
 }
+
+int16_t cITG3200::getXOffset(void){
+	return xOffset;
+}
+int16_t cITG3200::getYOffset(void){
+	return yOffset;
+}
+int16_t cITG3200::getZOffset(void){
+	return zOffset;
+}
+

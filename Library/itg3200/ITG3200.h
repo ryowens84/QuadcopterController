@@ -20,13 +20,15 @@ class cITG3200: public I2C
 		float getX(void);
 		float getY(void);
 		float getZ(void);
+		int16_t getXOffset(void);
+		int16_t getYOffset(void);
+		int16_t getZOffset(void);		
 		float getTemp(void);
 		
 	private:
-		//int16_t temp;
-		int16_t x_cal;
-		int16_t y_cal;
-		int16_t z_cal;
+		int16_t xOffset;
+		int16_t yOffset;
+		int16_t zoffset;
 		float xr;
 		float yr;
 		float zr;
