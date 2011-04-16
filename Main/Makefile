@@ -58,6 +58,8 @@ SRC += $(TIMERPATH)timer1.c
 SRC += $(TIMERPATH)timer1ISR.c
 SRC += $(UARTPATH)uart1.c
 SRC += $(UARTPATH)uart1ISR.c
+SRC += $(UARTPATH)uart0.c
+SRC += $(UARTPATH)uart0ISR.c
 SRC += $(PIDPATH)pid.c
 
 #Functions for SD interaction
