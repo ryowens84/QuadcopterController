@@ -55,10 +55,16 @@ void cITG3200::begin(void)
 	values[1]=(DLPF_FS_SEL_0|DLPF_FS_SEL_1|DLPF_CFG_0);
 	write(values, 2);	//Write the new data to the HMC register.
 	
+	/*
 	//Set sample rate divider for 100 Hz operation
 	values[0] = SMPLRT_DIV;
 	values[1] = 9;	//Fsample = Fint / (divider + 1) where Fint is 1kHz
 	write(values, 2);
+	*/
+	//Set sample rate divider for 1000 Hz operation
+	values[0] = SMPLRT_DIV;
+	values[1] = 0;	//Fsample = Fint / (divider + 1) where Fint is 1kHz
+	write(values, 2);	
 	
 	//Setup the interrupt to trigger when new data is ready.
 	values[0]=INT_CFG;
