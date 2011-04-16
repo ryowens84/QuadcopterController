@@ -58,17 +58,20 @@ void cADXL345::begin(void)
 {
 	configure();
 	
+	//Set the Range to +/- 4G
+	values[0] = DATA_FORMAT;
+	values[1] = RANGE_0;
+	write(values, 2);	
+	
+	//Set the update rate to 800 Hz
+	values[0] = BW_RATE;
+	values[1] = 0x0D;
+	write(values, 2);
+	
 	//Put the accelerometer in MEASURE mode
 	values[0]=POWER_CTL;
 	values[1] = MEASURE;
 	write(values, 2);		//Put the Accelerometer into measurement mode
-	
-	//Set the Range to +/- 4G
-	values[0] = DATA_FORMAT;
-	values[1] = RANGE_0;
-	write(values, 2);
-	
-	//default ADXL345 rate is 100 Hz. Perfect!
 	
 	updated=0;
 }
