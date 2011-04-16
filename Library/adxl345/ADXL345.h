@@ -20,11 +20,17 @@ class cADXL345: public I2C
 		double getY(void);
 		double getZ(void);
 		
+		int16_t getXOffset(void);
+		int16_t getYOffset(void);
+		int16_t getZOffset(void);		
+		
+		void calibrate(void);
+		
 	private:
 		char _i2c_address;
-		//int16_t x;
-		//int16_t y;
-		//int16_t z;
+		int16_t xOffset;
+		int16_t yOffset;
+		int16_t zOffset;
 		float xg;
 		float yg;
 		float zg;

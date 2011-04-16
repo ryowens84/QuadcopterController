@@ -52,6 +52,9 @@ cADXL345::cADXL345(int port, char i2c_address)
 	_i2c_port = port;
 	_i2c_address = i2c_address;
 	
+	xOffset=0;
+	yOffset=0;
+	zOffset=0;	
 }
 
 void cADXL345::begin(void)
@@ -109,18 +112,50 @@ char cADXL345::update(void)
 
 double cADXL345::getX(void)
 {
+	xg -= xOffset;
 	xg=xg*0.0078;
 	return xg;
 }
 
 double cADXL345::getY(void)
 {
+	yg -= yOffset;
 	yg=yg*0.0078;
 	return yg;
 }
 
 double cADXL345::getZ(void)
 {
+	zg -= zOffset;
 	zg=zg*0.0078;
 	return zg;
+}
+
+void cADXL345::calibrate(void)
+{
+	long int timeout=0;
+	for(int i=0; i<16; i++)
+	{
+		update();	//Get new values while device is not moving
+		xOffset+=(int16_t)xg;
+		yOffset+=(int16_t)yg;
+		zOffset+=(int16_t)zg;
+		timeout=millis();
+		while(millis() < timeout+100);
+	}
+	xOffset/=16;
+	yOffset/=16;
+	zOffset/=16;
+}
+
+int16_t cADXL345::getXOffset(void){
+	return xOffset;
+}
+
+int16_t cADXL345::getYOffset(void){
+	return yOffset;
+}
+
+int16_t cADXL345::getZOffset(void){
+	return zOffset;
 }
