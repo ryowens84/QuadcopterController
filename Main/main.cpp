@@ -80,6 +80,37 @@ double newD=0;
 
 int ledStatus=0;
 
+//Variables needed for implementation of DCM Algorithm
+int SENSOR_SIGN[9] = {-1,1,-1,1,1,1,-1,-1,-1};  //Correct directions x,y,z - gyros, accels, magnetormeter
+float G_Dt=0.02;    // Integration time (DCM algorithm)  We will run the integration loop at 50Hz if possible
+
+long timer=0;   //general purpuse timer
+long timer_old;
+int AN[6]; //array that store the 3 ADC filtered data (gyros)
+int AN_OFFSET[6]={0,0,0,0,0,0}; //Array that stores the Offset of the sensors
+int ACC[3];          //array that store the accelerometers data
+
+int accel_x;
+int accel_y;
+int accel_z;
+int magnetom_x;
+int magnetom_y;
+int magnetom_z;
+float MAG_Heading;
+
+float Accel_Vector[3]= {0,0,0}; //Store the acceleration in a vector
+float Gyro_Vector[3]= {0,0,0};//Store the gyros turn rate in a vector
+float Omega_Vector[3]= {0,0,0}; //Corrected Gyro_Vector data
+float Omega_P[3]= {0,0,0};//Omega Proportional correction
+float Omega_I[3]= {0,0,0};//Omega Integrator
+float Omega[3]= {0,0,0};
+
+// Euler angles
+float roll;
+float pitch;
+float yaw;
+
+
 //*******************************************************
 //					Main Code
 //*******************************************************
@@ -124,7 +155,6 @@ int main (void)
 	rprintf("Starting Calibration...\n\r");
 	gyro.calibrate();
 
-	
 	COMM_OFF();	//Start communication with the motor controller.
 	timeout = millis();
 	while(1)
