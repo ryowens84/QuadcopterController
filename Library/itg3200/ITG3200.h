@@ -28,7 +28,7 @@ class cITG3200: public I2C
 	private:
 		int16_t xOffset;
 		int16_t yOffset;
-		int16_t zoffset;
+		int16_t zOffset;
 		float xr;
 		float yr;
 		float zr;
