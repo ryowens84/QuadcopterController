@@ -45,6 +45,10 @@ extern "C"{
 #include "ITG3200.h"
 #include "sensor.h"
 #include "I2C.h"
+#include "Compass.h"
+#include "DCM.h"
+#include "Vector.h"
+#include "matrix.h"
 
 //*******************************************************
 //					Core Functions
@@ -80,15 +84,17 @@ double newD=0;
 
 int ledStatus=0;
 
+
 //Variables needed for implementation of DCM Algorithm
 int SENSOR_SIGN[9] = {-1,1,-1,1,1,1,-1,-1,-1};  //Correct directions x,y,z - gyros, accels, magnetormeter
-float G_Dt=0.02;    // Integration time (DCM algorithm)  We will run the integration loop at 50Hz if possible
+float G_Dt=0.022;    // Integration time (DCM algorithm)  We will run the integration loop at 50Hz if possible
 
 long timer=0;   //general purpuse timer
 long timer_old;
-int AN[6]; //array that store the 3 ADC filtered data (gyros)
+
+int AN[6]; //array that stores the raw sensor data (gyro X, Y, Z, accel X, Y, Z)
 int AN_OFFSET[6]={0,0,0,0,0,0}; //Array that stores the Offset of the sensors
-int ACC[3];          //array that store the accelerometers data
+int ACC[3]; //array that store the accelerometers data (may be able to get rid of this.
 
 int accel_x;
 int accel_y;
@@ -96,20 +102,6 @@ int accel_z;
 int magnetom_x;
 int magnetom_y;
 int magnetom_z;
-float MAG_Heading;
-
-float Accel_Vector[3]= {0,0,0}; //Store the acceleration in a vector
-float Gyro_Vector[3]= {0,0,0};//Store the gyros turn rate in a vector
-float Omega_Vector[3]= {0,0,0}; //Corrected Gyro_Vector data
-float Omega_P[3]= {0,0,0};//Omega Proportional correction
-float Omega_I[3]= {0,0,0};//Omega Integrator
-float Omega[3]= {0,0,0};
-
-// Euler angles
-float roll;
-float pitch;
-float yaw;
-
 
 //*******************************************************
 //					Main Code
@@ -149,14 +141,25 @@ int main (void)
 	timeout=millis();
 	while(millis() < timeout+500);
 	LED_OFF();
-	rprintf("Stop!!!\n\r");
+	//rprintf("Stop!!!\n\r");
 	timeout = millis();
-	while(millis() < timeout+1000);
-	rprintf("Starting Calibration...\n\r");
+	while(millis() < timeout+500);
+	//rprintf("Starting Calibration...\n\r");
 	gyro.calibrate();
+	accelerometer.calibrate();
+	//Fill the offset array
+	AN_OFFSET[0] = gyro.getXOffset();
+	AN_OFFSET[1] = gyro.getYOffset();
+	AN_OFFSET[2] = gyro.getZOffset();
+	AN_OFFSET[3] = accelerometer.getXOffset();
+	AN_OFFSET[4] = accelerometer.getYOffset();
+	AN_OFFSET[5] = accelerometer.getZOffset();
+	//Compensate the Z-Axis reading for gravity (to set to 0 when facing up)
+	AN_OFFSET[5] -= GRAVITY*SENSOR_SIGN[5];	
 
 	COMM_OFF();	//Start communication with the motor controller.
 	timeout = millis();
+	timer = millis();
 	while(1)
 	{
 		//Turn off communication if we've timed out!
@@ -206,6 +209,14 @@ int main (void)
 			VICIntEnClr |= INT_UART0;
 			
 			timeout = millis();	
+			if(ledStatus==1){
+				LED_OFF();
+				ledStatus=0;
+			}
+			else{
+				LED_ON();
+				ledStatus=1;
+			}			
 			
 			//A 0 in the first index of the message means we can power up.
 			if(uart0Message[0]==0){
@@ -223,16 +234,7 @@ int main (void)
 				newI = (double)uart0Message[2]/100.0;
 				newD = (double)uart0Message[3]/100.0;	
 
-				if((newP != myPID.Proportion)||(newI != myPID.Integral)||(newD!=myPID.Derivative)){	
-					if(ledStatus==1){
-						LED_OFF();
-						ledStatus=0;
-					}
-					else{
-						LED_ON();
-						ledStatus=1;
-					}	
-				
+				if((newP != myPID.Proportion)||(newI != myPID.Integral)||(newD!=myPID.Derivative)){					
 					myPID.Proportion = newP*-1;	
 					myPID.Integral = newI;
 					//myPID.Derivative = newD;
@@ -243,68 +245,40 @@ int main (void)
 			VICIntEnable |= INT_UART0;
 		}		
 		
+		//If the sensors have been updated, it's time to run the DCM algorithm and send new vals to the motors
 		if(sensors_updated)
 		{
-			sensors_updated=0;
-		
-			filter.last_time=filter.this_time;
-			filter.this_time=millis();	//Get the current number of milliseconds
-			//Calculate Interval Time in milliseconds
-			filter.interval=filter.this_time-filter.last_time;
+			//Update the timer
+			//timer_old = timer;
+			//timer = millis();
+			//if(timer>timer_old)G_Dt = (timer-timer_old);///1000.0;
+			//else G_Dt = 0;
 			
-			//Populate the RwAcc Array
-			//filter.fillAccelValues(accelerometer.getX(), accelerometer.getZ());		
-			filter.fillAccelValues(xAccelVal, zAccelVal);
-			
-			//Normalize the Accelerometers gravity vector
-			filter.normalizeVector(filter.RwAcc);
-			
-			if(filter.first_run)
-			{
-				for(int w=0; w<2; w++)filter.RwGyro[w] = filter.RwAcc[w];
-				filter.first_run-=1;			
-			}
-			else
-			{
-				//If the previous estimated values is too small, don't calc. a new one as the error will be large.
-				if(filter.RwEst[1] < 0.1)
-				{
-					for(int w=0; w<2; w++)filter.RwGyro[w]=filter.RwEst[w];
-				}
-				//Else, find the 'gyro angle' and calculate the weighted average to find attitude of device.
-				else
-				{
-					
-					//filter.this_rate=gyro.getX();	//Get the current deg/sec from gyroscope.
-					filter.this_rate=xGyroVal;
-					filter.this_angle=filter.this_rate*(filter.interval/1000);	//degree/sec * seconds == degrees
-					
-					filter.Axz = atan2(filter.RwEst[0], filter.RwEst[1])*180/PI;	//Get previous angle in degrees
-					filter.Axz += filter.this_angle;	//Add the current angle to the previous one to get current position.
-				}
-				
-				//Find out if RzGyro is positive or negative y checking quadrant of the Axz angle
-				if(cos(filter.Axz * (PI/180)) > 0)filter.signRzGyro=1;
-				else filter.signRzGyro=-1;
+			//Update the sensor values
+			AN[0] = (int)gyro.getX();
+			AN[1] = (int)gyro.getY();
+			AN[2] = (int)gyro.getZ();
+			AN[3] = (int)accelerometer.getX();
+			AN[4] = (int)accelerometer.getY();
+			AN[5] = (int)accelerometer.getZ();		
+			accel_x = SENSOR_SIGN[3]*(AN[3]-AN_OFFSET[3]);
+			accel_y = SENSOR_SIGN[4]*(AN[4]-AN_OFFSET[4]);
+			accel_z = SENSOR_SIGN[5]*(AN[5]-AN_OFFSET[5]);
 
-				//Use Axz to find RxGyro and RzGyro
-				filter.RwGyro[0] = sin(filter.Axz * (PI/180));
-				filter.RwGyro[0] /= sqrt(1);
-				filter.RwGyro[1] = filter.signRzGyro * sqrt(1-pow(filter.RwGyro[0],2));	
-			}
-			//Now we have the gravity force vector from both accelerometer and gyro. Combine them using weighted average
-			//to find Rw
-			for(int w=0; w<2; w++)
-			{
-				filter.RwEst[w] = (filter.RwAcc[w] + filter.RwGyro[w] * filter.gyro_weight)/(1+filter.gyro_weight);
-			}	
-			filter.normalizeVector(filter.RwEst);
+			//Find the compass heading
+			magnetom_x = (int)compass.getX();
+			magnetom_y = (int)compass.getY();
+			magnetom_z = (int)compass.getZ();
+			Compass_Heading();
 			
-			filter.AccTheta=atan2(filter.RwAcc[0], filter.RwAcc[1])*180/PI;
-			filter.EstTheta=atan2(filter.RwEst[0], filter.RwEst[1])*180/PI;	
+			//Run the DCM Calculations on the new sensor readings
+			Matrix_update();
+			Normalize();
+			Drift_correction();
+			Euler_angles();
 		
 			//PIDresult=PIDCalc(&myPID, filter.AccTheta);
-			PIDresult=PIDCalc(&myPID, filter.EstTheta);			
+			PIDresult=PIDCalc(&myPID, ToDeg(pitch));			
 			power = (int16_t)PIDresult;
 			power/=2;
 			
@@ -324,10 +298,10 @@ int main (void)
 			
 			//Send the system information to the XBee
 			sprintf(&sensor_string[0], "%c%c%c%c%c%2d%c", 0x66, (char)10+power, (char)10-power, 0x01, 0x01,
-				(int)filter.EstTheta, 0x67);
+				(int)ToDeg(pitch), 0x67);
+
 			rprintf_devopen(putc_serial0); //Init rprintf
 			rprintf(sensor_string); 
-			
 			
 			//Toggle the LED
 			//if(LED & IOPIN0 == LED)LED_OFF();
