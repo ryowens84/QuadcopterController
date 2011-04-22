@@ -108,19 +108,19 @@ char cHMC5843::update(void)
 
 float cHMC5843::getX(void)
 {
-	xc = xc/2048;
+	//xc = xc/2048;
 	return xc;
 }
 
 float cHMC5843::getY(void)
 {
-	yc = yc/2048;
+	//yc = yc/2048;
 	return yc;
 }
 
 float cHMC5843::getZ(void)
 {
-	zc = zc/2048;
+	//zc = zc/2048;
 	return zc;
 }
 
