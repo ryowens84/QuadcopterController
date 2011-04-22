@@ -11,7 +11,6 @@ Original Author: Greg Young, Z-World.
 #include <stdlib.h>
 #include <stdio.h>
 #include "LPC21xx_SFE.h"
-#include "main.h"
 #include "pid.h"
 
 /*=========================================================================*\
