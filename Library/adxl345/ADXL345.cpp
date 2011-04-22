@@ -42,6 +42,11 @@
 #include "LPC21xx_SFE.h"
 #include "main.h"
 
+extern "C"
+{
+	#include "timer1ISR.h"	
+}
+
 #define GLOBALOBJECT
 
 cADXL345 accelerometer(0, ADXL_ADDR);
@@ -112,22 +117,22 @@ char cADXL345::update(void)
 
 double cADXL345::getX(void)
 {
-	xg -= xOffset;
-	xg=xg*0.0078;
+	//xg -= xOffset;
+	//xg=xg*0.0078;
 	return xg;
 }
 
 double cADXL345::getY(void)
 {
-	yg -= yOffset;
-	yg=yg*0.0078;
+	//yg -= yOffset;
+	//yg=yg*0.0078;
 	return yg;
 }
 
 double cADXL345::getZ(void)
 {
-	zg -= zOffset;
-	zg=zg*0.0078;
+	//zg -= zOffset;
+	//zg=zg*0.0078;
 	return zg;
 }
 
