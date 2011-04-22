@@ -140,22 +140,22 @@ void cITG3200::calibrate(void)
 
 float cITG3200::getX(void)
 {
-	xr -= xOffset;
-	xr = xr/14.375;
+	//xr -= xOffset;
+	//xr = xr/14.375;
 	return xr;
 }
 
 float cITG3200::getY(void)
 {
-	yr -= yOffset;
-	yr = yr/14.375;
+	//yr -= yOffset;
+	//yr = yr/14.375;
 	return yr;
 }
 
 float cITG3200::getZ(void)
 {
-	zr -= zOffset;
-	zr = zr/14.375;
+	//zr -= zOffset;
+	//zr = zr/14.375;
 	return zr;
 }
 
