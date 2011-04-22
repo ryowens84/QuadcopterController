@@ -15,6 +15,10 @@ DELAYPATH = ../Library/delay/
 TIMERPATH = ../Library/timer/
 SENSORPATH = ../Library/sensor/
 PIDPATH = ../Library/pid/
+COMPASSPATH = ../Library/compass/
+DCMPATH = ../Library/DCM/
+VECTORPATH = ../Library/vector/
+MATRIXPATH = ../Library/matrix/
 
 FLASH_TOOL = LPC12
 #FLASH_TOOL = UVISION
@@ -100,6 +104,10 @@ CPPSRCARM += $(ITGPATH)ITG3200.cpp
 #CPPSRCARM += $(RTCPATH)RTC.cpp
 #CPPSRCARM += $(SDFATPATH)memory.cpp
 CPPSRCARM += $(SENSORPATH)sensor.cpp
+CPPSRCARM += $(COMPASSPATH)Compass.cpp
+CPPSRCARM += $(DCMPATH)DCM.cpp
+CPPSRCARM += $(VECTORPATH)Vector.cpp
+CPPSRCARM += $(MATRIXPATH)matrix.cpp
 
 # List Assembler source files here.
 # Make them always end in a capital .S.  Files ending in a lowercase .s
@@ -158,6 +166,10 @@ EXTRAINCDIRS += $(HMCPATH)
 EXTRAINCDIRS += $(TIMERPATH)
 EXTRAINCDIRS += $(SENSORPATH)
 EXTRAINCDIRS += $(PIDPATH)
+EXTRAINCDIRS += $(VECTORPATH)
+EXTRAINCDIRS += $(MATRIXPATH)
+EXTRAINCDIRS += $(DCMPATH)
+EXTRAINCDIRS += $(COMPASSPATH)
 #EXTRAINCDIRS += ../
 
 
